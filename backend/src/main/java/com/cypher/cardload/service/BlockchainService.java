@@ -1,10 +1,7 @@
 package com.cypher.cardload.service;
 
-import com.cypher.cardload.config.ApplicationConfig;
 import com.cypher.cardload.config.Constants;
 import com.cypher.cardload.model.TokenTransfer;
-import com.cypher.cardload.service.TokenPriceService;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

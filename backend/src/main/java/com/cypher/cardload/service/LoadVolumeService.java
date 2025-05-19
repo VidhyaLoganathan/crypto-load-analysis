@@ -2,12 +2,10 @@
 package com.cypher.cardload.service;
 
 import com.cypher.cardload.model.LoadVolumeData;
-import org.springframework.stereotype.Service;
-import java.util.List;
-
 import com.cypher.cardload.model.TokenTransfer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -24,9 +22,10 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
-@Service
+@Service("loadVolumeService")
 @RequiredArgsConstructor
 @Slf4j
+@ConditionalOnProperty(name = "load-simulator.enabled", havingValue = "false", matchIfMissing = true)
 public class LoadVolumeService {
 
     private final BlockchainService blockchainService;

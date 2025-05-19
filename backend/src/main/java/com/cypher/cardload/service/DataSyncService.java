@@ -33,7 +33,7 @@ public class DataSyncService {
     }
 
     // Sync new blocks every 5 minutes
-    @Scheduled(fixedRate = 300000)
+//  TODO:  @Scheduled(fixedRate = 300000)
     public void syncNewBlocks() {
         try {
             BigInteger currentBlock = blockchainService.getCurrentBlockNumber();
