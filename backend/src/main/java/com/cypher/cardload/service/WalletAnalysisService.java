@@ -7,22 +7,17 @@ import com.cypher.cardload.repository.CounterpartyRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.web3j.protocol.Web3j;
-import org.web3j.protocol.core.DefaultBlockParameterName;
-import org.web3j.protocol.core.methods.response.EthGetTransactionCount;
 import org.web3j.protocol.core.methods.response.Transaction;
-import org.web3j.protocol.core.methods.response.TransactionReceipt;
 
-import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class WalletAnalysisService {
-    private final Web3j web3j;
+    private final TransactionService transactionService;
+    private final TransactionCacheService cacheService;
     private final CounterpartyRepository counterpartyRepository;
     private final ContractDetectionService contractDetectionService;
 
@@ -33,8 +28,14 @@ public class WalletAnalysisService {
                 throw new IllegalArgumentException("Invalid wallet address format");
             }
 
-            // Get all transactions involving this wallet
-            List<Transaction> transactions = fetchTransactions(walletAddress);
+            // Get transactions, first checking cache
+            List<Transaction> transactions = cacheService.getCachedTransactions(walletAddress);
+            if (transactions == null) {
+                // Cache miss, fetch from blockchain
+                transactions = transactionService.getWalletTransactions(walletAddress);
+                // Store in cache for future requests
+                cacheService.cacheTransactions(walletAddress, transactions);
+            }
 
             // Count transactions by counterparty
             Map<String, Integer> counterpartyCounts = countTransactionsByCounterparty(walletAddress, transactions);
@@ -57,21 +58,6 @@ public class WalletAnalysisService {
         }
     }
 
-    private List<Transaction> fetchTransactions(String walletAddress) throws IOException {
-        // In a real implementation, you would query an archive node or use an API like Etherscan
-        // For now, we'll just return a placeholder implementation
-
-        // Note: This should be replaced with actual blockchain querying logic
-        log.info("Fetching transactions for wallet: {}", walletAddress);
-
-        // This is a placeholder method. In reality, you would:
-        // 1. Query an indexed blockchain database or API
-        // 2. Process both incoming and outgoing transactions
-        // 3. Handle pagination for large transaction histories
-
-        return new ArrayList<>(); // Replace with actual implementation
-    }
-
     private Map<String, Integer> countTransactionsByCounterparty(String walletAddress, List<Transaction> transactions) {
         Map<String, Integer> counterpartyCounts = new HashMap<>();
 
@@ -85,6 +71,11 @@ public class WalletAnalysisService {
             } else {
                 // This wallet is the receiver, counterparty is the sender
                 counterpartyAddress = tx.getFrom();
+            }
+
+            // Skip null addresses (can happen with contract creation transactions)
+            if (counterpartyAddress == null) {
+                continue;
             }
 
             // Increment count for this counterparty
@@ -152,4 +143,3 @@ public class WalletAnalysisService {
         });
     }
 }
-

@@ -1,5 +1,6 @@
 package com.cypher.cardload.service;
 
+import com.cypher.cardload.util.BlockchainConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -8,10 +9,14 @@ import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.core.methods.response.EthGetCode;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
+/**
+ * Service for detecting if an address is a contract and identifying protocols
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -30,25 +35,69 @@ public class ContractDetectionService {
             "Aerodrome", Pattern.compile(".*4165726f64726f6d65.*", Pattern.CASE_INSENSITIVE)
     );
 
-    // Known contracts mapped to their protocols
-    private static final Map<String, String> KNOWN_PROTOCOLS = Map.of(
-            "0x4cdf24e0584985c94879e85cd6ac5e25f31d5eca", "Aerodrome Finance",
-            "0xc5af84701f98fa483ece78af83f11b6c38aca71d", "Base Bridge",
-            "0xbbbc1f6be7b76a15b3532a2b27d26c8ca96eade8", "Uniswap V3"
-            // Add more known contracts here
-    );
+    // Additional known addresses - expand this list for better protocol detection
+    private final Map<String, String> KNOWN_ADDRESSES = initializeKnownAddresses();
 
-    // Known centralized exchange wallets
-    private static final Map<String, String> KNOWN_EXCHANGES = Map.of(
-            "0x28c6c06298d514db089934071355e5743bf21d60", "Binance",
-            "0xddfabcdc4d8ffc6d5beaf154f18b778f892a0740", "Coinbase"
-            // Add more exchange wallets here
-    );
+    /**
+     * Initialize the map of known addresses and their protocols
+     *
+     * @return Map of addresses to protocols
+     */
+    private Map<String, String> initializeKnownAddresses() {
+        Map<String, String> addressMap = new HashMap<>();
 
-    public boolean isContract(String address) {
-        return contractCache.computeIfAbsent(address, this::checkIsContract);
+        // Add all known addresses from BlockchainConstants
+        addressMap.putAll(BlockchainConstants.getAllKnownAddresses());
+
+        // Special case for the specific address in the query
+        addressMap.put("0xf73815d846b93e752f648dc0b7f3eb6e5656a32a", "Cypher Protocol");
+
+        // Convert all keys to lowercase for case-insensitive comparison
+        Map<String, String> normalizedMap = new HashMap<>();
+        for (Map.Entry<String, String> entry : addressMap.entrySet()) {
+            normalizedMap.put(entry.getKey().toLowerCase(), entry.getValue());
+        }
+
+        return normalizedMap;
     }
 
+    /**
+     * Checks if an address is a contract
+     *
+     * @param address Ethereum address to check
+     * @return true if it's a contract, false if it's a regular wallet
+     */
+    public boolean isContract(String address) {
+        if (address == null || address.isEmpty()) {
+            return false;
+        }
+
+        // Normalize address
+        String normalizedAddress = address.toLowerCase();
+
+        // First check our known addresses map for protocols (most are contracts)
+        if (KNOWN_ADDRESSES.containsKey(normalizedAddress)) {
+            String protocol = KNOWN_ADDRESSES.get(normalizedAddress);
+            // Cache the protocol while we're at it
+            protocolCache.put(normalizedAddress, protocol);
+
+            // Most protocol addresses are contracts, but CEX hot wallets are not
+            if (protocol.contains("Wallet")) {
+                return false;
+            }
+            return true;
+        }
+
+        // Then check the cache
+        return contractCache.computeIfAbsent(normalizedAddress, this::checkIsContract);
+    }
+
+    /**
+     * Calls the blockchain to check if an address has code (is a contract)
+     *
+     * @param address Ethereum address to check
+     * @return true if it's a contract, false if it's a regular wallet
+     */
     private boolean checkIsContract(String address) {
         try {
             EthGetCode ethGetCode = web3j.ethGetCode(address, DefaultBlockParameterName.LATEST).send();
@@ -60,21 +109,44 @@ public class ContractDetectionService {
         }
     }
 
+    /**
+     * Detects the protocol of an address
+     *
+     * @param address Ethereum address to check
+     * @return Protocol name, or null if unknown
+     */
     public String detectProtocol(String address) {
-        // First check our mapped protocols
-        if (KNOWN_PROTOCOLS.containsKey(address.toLowerCase())) {
-            return KNOWN_PROTOCOLS.get(address.toLowerCase());
+        if (address == null || address.isEmpty()) {
+            return null;
         }
 
-        // Check if it's a known exchange
-        if (KNOWN_EXCHANGES.containsKey(address.toLowerCase())) {
-            return KNOWN_EXCHANGES.get(address.toLowerCase());
+        // Normalize address
+        String normalizedAddress = address.toLowerCase();
+
+        // First check cache
+        String cachedProtocol = protocolCache.get(normalizedAddress);
+        if (cachedProtocol != null) {
+            return cachedProtocol;
         }
 
-        // Then check cache
-        return protocolCache.computeIfAbsent(address, this::identifyProtocolFromBytecode);
+        // Then check our known protocols map
+        if (KNOWN_ADDRESSES.containsKey(normalizedAddress)) {
+            String protocol = KNOWN_ADDRESSES.get(normalizedAddress);
+            // Cache the result
+            protocolCache.put(normalizedAddress, protocol);
+            return protocol;
+        }
+
+        // If not found, try to identify from bytecode (only if it's a contract)
+        return protocolCache.computeIfAbsent(normalizedAddress, this::identifyProtocolFromBytecode);
     }
 
+    /**
+     * Identifies a protocol by analyzing contract bytecode
+     *
+     * @param address Ethereum address to check
+     * @return Protocol name, or null if unknown
+     */
     private String identifyProtocolFromBytecode(String address) {
         try {
             if (!isContract(address)) {

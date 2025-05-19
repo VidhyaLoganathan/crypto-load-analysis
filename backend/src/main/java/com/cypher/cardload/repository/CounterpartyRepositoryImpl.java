@@ -55,3 +55,5 @@ public class CounterpartyRepositoryImpl implements CounterpartyRepository {
         return knownEntities.values().stream().collect(Collectors.toList());
     }
 }
+
+
