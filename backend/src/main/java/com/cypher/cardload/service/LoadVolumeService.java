@@ -1,18 +1,15 @@
-
 package com.cypher.cardload.service;
 
 import com.cypher.cardload.model.LoadVolumeData;
 import com.cypher.cardload.model.TokenTransfer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 import java.time.temporal.WeekFields;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,10 +19,9 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
-@Service("loadVolumeService")
+@Service
 @RequiredArgsConstructor
 @Slf4j
-@ConditionalOnProperty(name = "load-simulator.enabled", havingValue = "false", matchIfMissing = true)
 public class LoadVolumeService {
 
     private final BlockchainService blockchainService;
@@ -152,14 +148,19 @@ public class LoadVolumeService {
                 endEpoch = endDate.plusDays(1).atStartOfDay().toEpochSecond(ZoneOffset.UTC);
             }
 
-            // Get block numbers from timestamps
-            var startBlock = blockchainService.getBlockNumberByTimestamp(startEpoch);
-            var endBlock = blockchainService.getBlockNumberByTimestamp(endEpoch);
+            try {
+                // Get block numbers from timestamps
+                var startBlock = blockchainService.getBlockNumberByTimestamp(startEpoch);
+                var endBlock = blockchainService.getBlockNumberByTimestamp(endEpoch);
 
-            return blockchainService.getTokenTransfersToMasterWallet(startBlock, endBlock);
+                return blockchainService.getTokenTransfersToMasterWallet(startBlock, endBlock);
+            } catch (Exception e) {
+                log.error("Error getting block numbers: {}", e.getMessage());
+                return new ArrayList<>();
+            }
 
         } catch (Exception e) {
-            log.error("Error fetching transfers for date range: ", e);
+            log.error("Error fetching transfers for date range: {}", e.getMessage());
             return new ArrayList<>();
         }
     }

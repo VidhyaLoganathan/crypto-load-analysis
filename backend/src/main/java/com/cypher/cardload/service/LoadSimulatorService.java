@@ -3,7 +3,6 @@ package com.cypher.cardload.service;
 import com.cypher.cardload.model.LoadVolumeData;
 import com.cypher.cardload.model.TokenTransfer;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -22,7 +21,6 @@ import java.util.Random;
  */
 @Service
 @Slf4j
-@ConditionalOnProperty(name = "load-simulator.enabled", havingValue = "true")
 public class LoadSimulatorService {
 
     private final Random random = new Random();

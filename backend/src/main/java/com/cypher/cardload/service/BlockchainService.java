@@ -2,13 +2,11 @@ package com.cypher.cardload.service;
 
 import com.cypher.cardload.config.Constants;
 import com.cypher.cardload.model.TokenTransfer;
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.core.methods.response.EthBlock;
-import org.web3j.protocol.core.methods.response.EthGetBalance;
 import org.web3j.protocol.core.methods.response.EthLog;
 import org.web3j.protocol.core.methods.response.Transaction;
 import org.web3j.protocol.http.HttpService;
@@ -41,7 +39,7 @@ public class BlockchainService {
     private static int currentRpcIndex = 0;
 
     // Create Web3j instance directly
-    private final Web3j web3j;
+    private Web3j web3j;
     private final TokenPriceService tokenPriceService;
 
     public BlockchainService(TokenPriceService tokenPriceService) {
@@ -80,6 +78,9 @@ public class BlockchainService {
         List<TokenTransfer> allTransfers = new ArrayList<>();
 
         try {
+            // Check connection first
+            testConnection();
+
             // First get native ETH transfers
             List<TokenTransfer> ethTransfers = getEthTransfers(startBlock, endBlock);
             allTransfers.addAll(ethTransfers);
@@ -89,10 +90,39 @@ public class BlockchainService {
             allTransfers.addAll(erc20Transfers);
 
         } catch (Exception e) {
-            log.error("Error fetching transfers: ", e);
+            log.error("Error fetching transfers, blockchain connection may be unavailable: {}", e.getMessage());
+            log.info("Consider enabling simulator mode by setting load-simulator.enabled=true");
+            // Return empty list, which will result in no data being displayed
         }
 
         return allTransfers;
+    }
+
+    // Helper method to test connection
+    private void testConnection() throws IOException {
+        try {
+            web3j.ethBlockNumber().send();
+        } catch (IOException e) {
+            log.error("Web3j connection test failed: {}", e.getMessage());
+
+            // Try recreating the connection with a different RPC
+            currentRpcIndex = (currentRpcIndex + 1) % BASE_RPC_URLS.length;
+            String newRpcUrl = BASE_RPC_URLS[currentRpcIndex];
+            log.info("Attempting to switch to different RPC: {}", newRpcUrl);
+
+            try {
+                Web3j newWeb3j = Web3j.build(new HttpService(newRpcUrl));
+                newWeb3j.ethBlockNumber().send(); // Test new connection
+
+                // If we get here, new connection works
+                web3j.shutdown(); // Close old connection
+                web3j = newWeb3j; // Use new connection
+                log.info("Successfully switched to RPC: {}", newRpcUrl);
+            } catch (Exception innerEx) {
+                log.error("Failed to switch to alternative RPC: {}", innerEx.getMessage());
+                throw new IOException("No available RPC endpoints", innerEx);
+            }
+        }
     }
 
     private List<TokenTransfer> getEthTransfers(BigInteger startBlock, BigInteger endBlock) {
@@ -103,7 +133,7 @@ public class BlockchainService {
             org.web3j.protocol.core.methods.request.EthFilter filter = new org.web3j.protocol.core.methods.request.EthFilter(
                     org.web3j.protocol.core.DefaultBlockParameter.valueOf(startBlock),
                     org.web3j.protocol.core.DefaultBlockParameter.valueOf(endBlock),
-                    Collections.singletonList(Constants.MASTER_WALLET_ADDRESS)
+                    Collections.singletonList(Constants.MASTER_WALLET_ADDRESS) // Use singleton list
             );
 
             EthLog ethLog = web3j.ethGetLogs(filter).send();
@@ -154,10 +184,11 @@ public class BlockchainService {
 
         try {
             // Create filter for Transfer events to master wallet
+            // Use ArrayList.of() instead of null for the contract address list
             org.web3j.protocol.core.methods.request.EthFilter filter = new org.web3j.protocol.core.methods.request.EthFilter(
                     org.web3j.protocol.core.DefaultBlockParameter.valueOf(startBlock),
                     org.web3j.protocol.core.DefaultBlockParameter.valueOf(endBlock),
-                    (List<String>) null
+                    new ArrayList<String>() // Empty list instead of null
             );
 
             // Filter for Transfer event
@@ -221,7 +252,6 @@ public class BlockchainService {
 
         return transfers;
     }
-
     // Helper method to get token symbol by address
     private String getTokenSymbolByAddress(String tokenAddress) {
         // First check our known tokens map
@@ -259,17 +289,23 @@ public class BlockchainService {
 
     // Get block by timestamp (approximate)
     public BigInteger getBlockNumberByTimestamp(long timestamp) throws IOException, ExecutionException, InterruptedException {
-        // This is a simplified approach - in production, use binary search
-        BigInteger latestBlock = web3j.ethBlockNumber().send().getBlockNumber();
-        EthBlock.Block latestBlockDetails = web3j.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false)
-                .send().getBlock();
+        try {
+            // This is a simplified approach - in production, use binary search
+            BigInteger latestBlock = web3j.ethBlockNumber().send().getBlockNumber();
+            EthBlock.Block latestBlockDetails = web3j.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false)
+                    .send().getBlock();
 
-        long latestTimestamp = latestBlockDetails.getTimestamp().longValue();
+            long latestTimestamp = latestBlockDetails.getTimestamp().longValue();
 
-        // Average block time on Base is about 2 seconds
-        long timeDiff = latestTimestamp - timestamp;
-        long blockDiff = timeDiff / 2;
+            // Average block time on Base is about 2 seconds
+            long timeDiff = latestTimestamp - timestamp;
+            long blockDiff = timeDiff / 2;
 
-        return latestBlock.subtract(BigInteger.valueOf(blockDiff));
+            return latestBlock.subtract(BigInteger.valueOf(blockDiff));
+        } catch (Exception e) {
+            log.error("Error calculating block by timestamp: {}", e.getMessage());
+            // Return a fallback (recent) block number to avoid null
+            return BigInteger.valueOf(5000000);
+        }
     }
 }

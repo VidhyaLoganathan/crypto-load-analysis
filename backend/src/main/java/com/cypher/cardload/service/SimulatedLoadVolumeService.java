@@ -3,7 +3,6 @@ package com.cypher.cardload.service;
 import com.cypher.cardload.model.LoadVolumeData;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -11,12 +10,10 @@ import java.util.List;
 
 /**
  * This service uses the simulator to provide load volume data when blockchain RPC is unavailable.
- * It's conditionally enabled based on the load-simulator.enabled property.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@ConditionalOnProperty(name = "load-simulator.enabled", havingValue = "true")
 public class SimulatedLoadVolumeService {
 
     private final LoadSimulatorService loadSimulatorService;
