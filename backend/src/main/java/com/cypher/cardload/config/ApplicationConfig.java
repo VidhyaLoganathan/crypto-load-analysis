@@ -43,6 +43,9 @@ public class ApplicationConfig implements WebMvcConfigurer {
         } catch (Exception e) {
             // Try next RPC endpoint
             currentRpcIndex = (currentRpcIndex + 1) % BASE_RPC_URLS.length;
+            System.out.println("\n\n\n\n\n\n\n\n");
+
+            System.out.println("Current RPC INDEX : "+currentRpcIndex);
             if (currentRpcIndex == 0) {
                 // We've tried all endpoints
                 throw new RuntimeException("Failed to connect to any Base RPC endpoint", e);
