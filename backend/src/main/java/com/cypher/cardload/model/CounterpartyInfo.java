@@ -16,4 +16,5 @@ public class CounterpartyInfo {
     private CounterpartyType type;
     private String protocol;
     private boolean isKnownEntity;
+    private String etherscanUrl; // Added for frontend convenience
 }
