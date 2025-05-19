@@ -27,32 +27,32 @@ public class ApplicationConfig implements WebMvcConfigurer {
 
     private static int currentRpcIndex = 0;
 
-    @Bean
-    public Web3j web3j() {
-        return createWeb3jWithFallback();
-    }
+//    @Bean
+//    public Web3j web3j() {
+//        return createWeb3jWithFallback();
+//    }
 
-    private Web3j createWeb3jWithFallback() {
-        String rpcUrl = BASE_RPC_URLS[currentRpcIndex];
-        Web3j web3j = Web3j.build(new HttpService(rpcUrl));
-
-        try {
-            // Test connection
-            web3j.ethBlockNumber().send();
-            return web3j;
-        } catch (Exception e) {
-            // Try next RPC endpoint
-            currentRpcIndex = (currentRpcIndex + 1) % BASE_RPC_URLS.length;
-            System.out.println("\n\n\n\n\n\n\n\n");
-
-            System.out.println("Current RPC INDEX : "+currentRpcIndex);
-            if (currentRpcIndex == 0) {
-                // We've tried all endpoints
-                throw new RuntimeException("Failed to connect to any Base RPC endpoint", e);
-            }
-            return createWeb3jWithFallback();
-        }
-    }
+//    private Web3j createWeb3jWithFallback() {
+//        String rpcUrl = BASE_RPC_URLS[currentRpcIndex];
+//        Web3j web3j = Web3j.build(new HttpService(rpcUrl));
+//
+//        try {
+//            // Test connection
+//            web3j.ethBlockNumber().send();
+//            return web3j;
+//        } catch (Exception e) {
+//            // Try next RPC endpoint
+//            currentRpcIndex = (currentRpcIndex + 1) % BASE_RPC_URLS.length;
+//            System.out.println("\n\n\n\n\n\n\n\n");
+//
+//            System.out.println("Current RPC INDEX : "+currentRpcIndex);
+//            if (currentRpcIndex == 0) {
+//                // We've tried all endpoints
+//                throw new RuntimeException("Failed to connect to any Base RPC endpoint", e);
+//            }
+//            return createWeb3jWithFallback();
+//        }
+//    }
 
     @Bean
     public RestTemplate restTemplate() {

@@ -1,7 +1,6 @@
 package com.cypher.cardload.service;
 
 import com.cypher.cardload.config.Constants;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -15,6 +14,7 @@ import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.core.methods.request.Transaction;
 import org.web3j.protocol.core.methods.response.EthCall;
+import org.web3j.protocol.http.HttpService;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -26,11 +26,52 @@ import java.util.Collections;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class TokenPriceService {
 
+    // Create Web3j instance directly
     private final Web3j web3j;
+
+    // Define RPC URLs directly in the class
+    private static final String[] BASE_RPC_URLS = {
+            "https://mainnet.base.org",
+            "https://base.llamarpc.com",
+            "https://base-mainnet.public.blastapi.io",
+            "https://base-rpc.publicnode.com",
+            "https://1rpc.io/base"
+    };
+
+    private static int currentRpcIndex = 0;
+
+    public TokenPriceService() {
+        this.web3j = createWeb3jWithFallback();
+    }
+
+    // Create Web3j with fallback mechanism
+    private Web3j createWeb3jWithFallback() {
+        String rpcUrl = BASE_RPC_URLS[currentRpcIndex];
+        Web3j web3j = Web3j.build(new HttpService(rpcUrl));
+
+        try {
+            // Test connection
+            web3j.ethBlockNumber().send();
+            log.info("TokenPriceService connected to Base chain RPC: {}", rpcUrl);
+            return web3j;
+        } catch (Exception e) {
+            // Try next RPC endpoint
+            log.warn("TokenPriceService failed to connect to RPC {}: {}", rpcUrl, e.getMessage());
+            currentRpcIndex = (currentRpcIndex + 1) % BASE_RPC_URLS.length;
+
+            // If we've tried all endpoints and none work
+            if (currentRpcIndex == 0) {
+                log.error("TokenPriceService failed to connect to any Base RPC endpoint");
+                // Return the instance anyway, we'll handle errors when methods are called
+                return web3j;
+            }
+
+            return createWeb3jWithFallback();
+        }
+    }
 
     @Cacheable("ethUsdPrices")
     public BigDecimal getEthUsdPrice(LocalDateTime timestamp) {
