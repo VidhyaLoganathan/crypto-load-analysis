@@ -1,0 +1,38 @@
+/* LoadVolumeChart.css */
+.chart-container {
+  margin-top: 20px;
+}
+
+.chart-wrapper {
+  margin-top: 24px;
+  height: 400px;
+  width: 100%;
+}
+
+.chart-summary {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.summary-box {
+  flex: 1;
+  background-color: #f9fafb;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.summary-box h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: #4a5568;
+}
+
+.summary-box p {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0;
+  color: #2a4365;
+}
