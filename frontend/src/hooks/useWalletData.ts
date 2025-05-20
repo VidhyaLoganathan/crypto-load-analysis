@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchWalletAnalysis, WalletAnalysisData, Counterparty } from '../api/walletService';
+import { fetchWalletAnalysis, WalletAnalysisData } from '../api/walletService';
 
 type UseWalletDataReturn = {
   data: WalletAnalysisData | null;
@@ -33,6 +33,14 @@ const useWalletData = (walletAddress: string): UseWalletDataReturn => {
 
         // Fetch wallet analysis data
         const walletData = await fetchWalletAnalysis(walletAddress);
+        console.log("Wallet data received in hook:", walletData);
+
+        // Extra validation to help with debugging
+        if (!walletData.topCounterparties || !Array.isArray(walletData.topCounterparties)) {
+          console.error("Invalid topCounterparties in response:", walletData.topCounterparties);
+          throw new Error('Invalid response format: topCounterparties is missing or not an array');
+        }
+
         setData(walletData);
       } catch (err) {
         console.error('Error loading wallet data:', err);

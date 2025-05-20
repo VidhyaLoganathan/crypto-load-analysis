@@ -4,7 +4,7 @@ import axios from 'axios';
 // If you're using proxy in package.json, leave this empty
 const API_BASE_URL = '';
 
-// Spring Boot controller context path - updated to match your controller
+// Spring Boot controller context path - matches your controller
 const API_CONTEXT_PATH = '/api/v1/wallet';
 
 // Data source tracking
@@ -17,10 +17,12 @@ export type Counterparty = {
   type: 'wallet' | 'contract' | 'protocol' | 'exchange';
   transactionCount: number;
   protocol?: string;
+  etherscanUrl?: string;
 };
 
 export type WalletAnalysisData = {
   walletAddress: string;
+  totalTransactions?: number;
   topCounterparties: Counterparty[];
 };
 
@@ -64,11 +66,12 @@ export async function fetchWalletAnalysis(walletAddress: string): Promise<Wallet
     // Set data source to API
     walletDataSource = 'api';
 
-    // Transform the data if necessary to match our frontend format
-    // This mapping depends on your WalletAnalysisResponse structure in the backend
+    // Map the response data directly to our frontend format
+    // This mapping is now updated to match your actual backend response structure
     return {
-      walletAddress: response.data.walletAddress || walletAddress,
-      topCounterparties: transformCounterparties(response.data.counterparties || [])
+      walletAddress: response.data.walletAddress,
+      totalTransactions: response.data.totalTransactions,
+      topCounterparties: transformCounterparties(response.data.topCounterparties || [])
     };
   } catch (error) {
     console.error('Error fetching wallet analysis:', error);
@@ -84,39 +87,26 @@ export async function fetchWalletAnalysis(walletAddress: string): Promise<Wallet
 // Transform counterparties from backend format to frontend format
 function transformCounterparties(backendCounterparties: any[]): Counterparty[] {
   return backendCounterparties.map(cp => {
-    // Identify protocol if it's a known address
-    const protocolInfo = KNOWN_PROTOCOLS[cp.address.toLowerCase()] || {
-      name: cp.name || 'Unknown',
-      type: determineType(cp)
-    };
+    // Convert backend type to frontend type format (lowercase)
+    let type: 'wallet' | 'contract' | 'protocol' | 'exchange' = 'wallet';
+
+    if (cp.type) {
+      const typeStr = cp.type.toLowerCase();
+      if (typeStr === 'protocol') type = 'protocol';
+      else if (typeStr === 'contract') type = 'contract';
+      else if (typeStr === 'exchange') type = 'exchange';
+      else if (typeStr === 'wallet') type = 'wallet';
+    }
 
     return {
       address: cp.address,
-      name: cp.name || protocolInfo.name || 'Unknown',
-      type: protocolInfo.type || determineType(cp),
-      transactionCount: cp.transactionCount || cp.txCount || 0,
-      protocol: protocolInfo.name !== 'Unknown' ? protocolInfo.name : undefined
+      name: cp.name || 'Unknown',
+      type: type,
+      transactionCount: cp.transactionCount || 0,
+      protocol: cp.protocol || undefined,
+      etherscanUrl: cp.etherscanUrl
     };
   });
-}
-
-// Helper function to determine entity type from backend data
-function determineType(counterparty: any): 'wallet' | 'contract' | 'protocol' | 'exchange' {
-  // Use the backend type if available
-  if (counterparty.type) {
-    const type = counterparty.type.toLowerCase();
-    if (type === 'wallet' || type === 'contract' || type === 'protocol' || type === 'exchange') {
-      return type as 'wallet' | 'contract' | 'protocol' | 'exchange';
-    }
-  }
-
-  // Otherwise make a guess based on available data
-  if (counterparty.isContract) return 'contract';
-  if (counterparty.isExchange) return 'exchange';
-  if (counterparty.isProtocol) return 'protocol';
-
-  // Default to wallet
-  return 'wallet';
 }
 
 // Generate mock data for development/fallback
@@ -130,14 +120,16 @@ function generateMockWalletData(walletAddress: string): WalletAnalysisData {
       name: 'Uniswap Router',
       type: 'protocol',
       transactionCount: Math.floor(10 + Math.random() * 40),
-      protocol: 'Uniswap'
+      protocol: 'Uniswap',
+      etherscanUrl: 'https://basescan.org/address/0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45'
     },
     {
       address: '0xdef1c0ded9bec7f1a1670819833240f027b25eff',
       name: 'Coinbase',
       type: 'exchange',
       transactionCount: Math.floor(5 + Math.random() * 30),
-      protocol: 'Coinbase'
+      protocol: 'Coinbase',
+      etherscanUrl: 'https://basescan.org/address/0xdef1c0ded9bec7f1a1670819833240f027b25eff'
     },
     {
       address: '0x' + Array(40).fill(0).map(() =>
@@ -145,13 +137,15 @@ function generateMockWalletData(walletAddress: string): WalletAnalysisData {
       name: 'Unknown Wallet',
       type: 'wallet',
       transactionCount: Math.floor(2 + Math.random() * 20),
+      etherscanUrl: 'https://basescan.org/address/0x'
     },
     {
       address: '0x6c3f90f043a72fa612cbac8115ee7e52bde6e490',
       name: 'Curve 3Pool',
       type: 'protocol',
       transactionCount: Math.floor(2 + Math.random() * 15),
-      protocol: 'Curve'
+      protocol: 'Curve',
+      etherscanUrl: 'https://basescan.org/address/0x6c3f90f043a72fa612cbac8115ee7e52bde6e490'
     },
     {
       address: '0x' + Array(40).fill(0).map(() =>
@@ -159,13 +153,15 @@ function generateMockWalletData(walletAddress: string): WalletAnalysisData {
       name: 'Contract',
       type: 'contract',
       transactionCount: Math.floor(1 + Math.random() * 10),
+      etherscanUrl: 'https://basescan.org/address/0x'
     },
     {
       address: '0x4c36d2919e407f0cc2ee3c993ccf8ac26d9ce64e',
       name: 'Base Bridge',
       type: 'protocol',
       transactionCount: Math.floor(1 + Math.random() * 8),
-      protocol: 'Base Bridge'
+      protocol: 'Base Bridge',
+      etherscanUrl: 'https://basescan.org/address/0x4c36d2919e407f0cc2ee3c993ccf8ac26d9ce64e'
     },
     {
       address: '0x' + Array(40).fill(0).map(() =>
@@ -173,6 +169,7 @@ function generateMockWalletData(walletAddress: string): WalletAnalysisData {
       name: 'Unknown Wallet',
       type: 'wallet',
       transactionCount: Math.floor(1 + Math.random() * 6),
+      etherscanUrl: 'https://basescan.org/address/0x'
     },
     {
       address: '0x' + Array(40).fill(0).map(() =>
@@ -180,6 +177,7 @@ function generateMockWalletData(walletAddress: string): WalletAnalysisData {
       name: 'Contract',
       type: 'contract',
       transactionCount: Math.floor(1 + Math.random() * 5),
+      etherscanUrl: 'https://basescan.org/address/0x'
     },
     {
       address: '0x' + Array(40).fill(0).map(() =>
@@ -187,6 +185,7 @@ function generateMockWalletData(walletAddress: string): WalletAnalysisData {
       name: 'Unknown Wallet',
       type: 'wallet',
       transactionCount: Math.floor(1 + Math.random() * 4),
+      etherscanUrl: 'https://basescan.org/address/0x'
     },
     {
       address: '0x' + Array(40).fill(0).map(() =>
@@ -194,11 +193,13 @@ function generateMockWalletData(walletAddress: string): WalletAnalysisData {
       name: 'Unknown Wallet',
       type: 'wallet',
       transactionCount: Math.floor(1 + Math.random() * 3),
+      etherscanUrl: 'https://basescan.org/address/0x'
     }
   ];
 
   return {
     walletAddress,
+    totalTransactions: 2126,
     topCounterparties: mockCounterparties
   };
 }
