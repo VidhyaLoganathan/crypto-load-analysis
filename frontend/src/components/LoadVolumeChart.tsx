@@ -12,9 +12,13 @@ type TimeframeData = DataPoint[];
 type LoadVolumeChartProps = {
   data: TimeframeData;
   timeframe: 'daily' | 'weekly' | 'monthly';
+  summaryData: {
+    totalVolume: number;
+    averageVolume: number;
+  } | null;
 };
 
-const LoadVolumeChart: React.FC<LoadVolumeChartProps> = ({ data, timeframe }) => {
+const LoadVolumeChart: React.FC<LoadVolumeChartProps> = ({ data, timeframe, summaryData }) => {
   // Format the tooltip to display USD values
   const formatTooltip = (value: number) => {
     return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -34,9 +38,18 @@ const LoadVolumeChart: React.FC<LoadVolumeChartProps> = ({ data, timeframe }) =>
     }
   };
 
-  // Calculate some summary statistics
-  const totalVolume = data.reduce((sum, point) => sum + point.volume, 0);
-  const averageVolume = totalVolume / data.length;
+  // Calculate from data if summaryData is null
+  const calculateTotalVolume = () => {
+    return data.reduce((sum, point) => sum + point.volume, 0);
+  };
+
+  const calculateAverageVolume = (total: number) => {
+    return data.length > 0 ? total / data.length : 0;
+  };
+
+  // Use summary data from props if available, otherwise calculate
+  const totalVolume = summaryData?.totalVolume ?? calculateTotalVolume();
+  const averageVolume = summaryData?.averageVolume ?? calculateAverageVolume(totalVolume);
 
   return (
     <div className="chart-container">
