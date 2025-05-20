@@ -44,10 +44,15 @@
         </dependency>
 
         <!-- Ehcache for caching -->
+<!--        <dependency>-->
+<!--            <groupId>org.ehcache</groupId>-->
+<!--            <artifactId>ehcache</artifactId>-->
+<!--            <version>${ehcache.version}</version>-->
+<!--        </dependency>-->
         <dependency>
-            <groupId>org.ehcache</groupId>
-            <artifactId>ehcache</artifactId>
-            <version>${ehcache.version}</version>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>3.1.8</version>
         </dependency>
 
         <!-- Web3j for Ethereum/Blockchain interactions -->

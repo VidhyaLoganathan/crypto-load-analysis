@@ -3,7 +3,10 @@ package com.cypher.cardload.config;
 import java.util.Map;
 
 public class Constants {
+    //cypher wallet address
     public static final String MASTER_WALLET_ADDRESS = "0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD";
+
+    //Alchemy API url with key
     public static final String ALCHEMY_API_URL = "https://base-mainnet.g.alchemy.com/v2/5cTrJMY4BHtVjgKNC31Wek_Knoh2Yn5R";
 
     public static final String ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";

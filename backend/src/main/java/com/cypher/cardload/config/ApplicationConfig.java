@@ -1,6 +1,7 @@
 
 package com.cypher.cardload.config;
 
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -9,9 +10,8 @@ import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.http.HttpService;
-//import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.Caffeine;
 
-import javax.cache.CacheManager;
 import java.time.Duration;
 
 @Configuration
@@ -58,7 +58,7 @@ public class ApplicationConfig implements WebMvcConfigurer {
     public RestTemplate restTemplate() {
         return new RestTemplate();
     }
-    //TODO : ADD caffine cache
+    //TODO : ADD caffine cache - moved to CacheConfig
 //    @Bean
 //    public CacheManager cacheManager() {
 //        CaffeineCacheManager cacheManager = new CaffeineCacheManager();
