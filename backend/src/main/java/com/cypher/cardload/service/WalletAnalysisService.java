@@ -4,6 +4,7 @@ import com.cypher.cardload.model.CounterpartyInfo;
 import com.cypher.cardload.model.CounterpartyType;
 import com.cypher.cardload.model.WalletAnalysisResponse;
 import com.cypher.cardload.repository.CounterpartyRepository;
+import com.cypher.cardload.util.TransactionUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -12,6 +13,9 @@ import org.web3j.protocol.core.methods.response.Transaction;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Service for analyzing wallet transactions and identifying counterparties
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -20,9 +24,20 @@ public class WalletAnalysisService {
     private final TransactionCacheService cacheService;
     private final CounterpartyRepository counterpartyRepository;
     private final ContractDetectionService contractDetectionService;
+    private final TransactionUtils transactionUtils;
 
+    /**
+     * Analyzes a wallet to find its top counterparties
+     *
+     * @param walletAddress the wallet address to analyze
+     * @param limit the maximum number of counterparties to return
+     * @return WalletAnalysisResponse containing the analysis results
+     */
     public WalletAnalysisResponse analyzeWallet(String walletAddress, int limit) {
         try {
+            // Normalize wallet address to lowercase
+            walletAddress = walletAddress.toLowerCase();
+
             // Validate wallet address format
             if (!walletAddress.startsWith("0x") || walletAddress.length() != 42) {
                 throw new IllegalArgumentException("Invalid wallet address format");
@@ -58,6 +73,13 @@ public class WalletAnalysisService {
         }
     }
 
+    /**
+     * Counts transactions by counterparty address
+     *
+     * @param walletAddress the wallet address being analyzed
+     * @param transactions list of transactions involving the wallet
+     * @return map of counterparty addresses to transaction counts
+     */
     private Map<String, Integer> countTransactionsByCounterparty(String walletAddress, List<Transaction> transactions) {
         Map<String, Integer> counterpartyCounts = new HashMap<>();
 
@@ -68,6 +90,14 @@ public class WalletAnalysisService {
             if (walletAddress.equalsIgnoreCase(tx.getFrom())) {
                 // This wallet is the sender, counterparty is the receiver
                 counterpartyAddress = tx.getTo();
+
+                // For token transfers, extract the actual recipient from the transaction data
+                Optional<String> recipientOpt = transactionUtils.extractTokenTransferRecipient(tx);
+                if (recipientOpt.isPresent()) {
+                    String normalizedRecipient = recipientOpt.get().toLowerCase();
+                    counterpartyCounts.put(normalizedRecipient,
+                            counterpartyCounts.getOrDefault(normalizedRecipient, 0) + 1);
+                }
             } else {
                 // This wallet is the receiver, counterparty is the sender
                 counterpartyAddress = tx.getFrom();
@@ -78,6 +108,9 @@ public class WalletAnalysisService {
                 continue;
             }
 
+            // Normalize address to lowercase
+            counterpartyAddress = counterpartyAddress.toLowerCase();
+
             // Increment count for this counterparty
             counterpartyCounts.put(counterpartyAddress,
                     counterpartyCounts.getOrDefault(counterpartyAddress, 0) + 1);
@@ -86,6 +119,13 @@ public class WalletAnalysisService {
         return counterpartyCounts;
     }
 
+    /**
+     * Gets the top counterparties by transaction count
+     *
+     * @param counterpartyCounts map of counterparty addresses to transaction counts
+     * @param limit maximum number of counterparties to return
+     * @return list of top counterparties
+     */
     private List<CounterpartyInfo> getTopCounterparties(Map<String, Integer> counterpartyCounts, int limit) {
         return counterpartyCounts.entrySet().stream()
                 .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
@@ -97,12 +137,24 @@ public class WalletAnalysisService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Enriches counterparty data with metadata such as name, type, and protocol
+     *
+     * @param counterparties list of counterparties to enrich
+     */
     private void enrichCounterpartyData(List<CounterpartyInfo> counterparties) {
         // Use parallel streams for better performance with multiple API calls
         counterparties.parallelStream().forEach(counterparty -> {
             try {
+                // Normalize address
+                String address = counterparty.getAddress().toLowerCase();
+                counterparty.setAddress(address);
+
+                // Add Etherscan URL for frontend linking
+                counterparty.setEtherscanUrl(transactionUtils.getEtherscanUrl(address));
+
                 // 1. Check if this is a known entity in our repository
-                counterpartyRepository.findByAddress(counterparty.getAddress())
+                counterpartyRepository.findByAddress(address)
                         .ifPresent(knownEntity -> {
                             counterparty.setName(knownEntity.getName());
                             counterparty.setType(knownEntity.getType());
@@ -110,23 +162,33 @@ public class WalletAnalysisService {
                             counterparty.setKnownEntity(true);
                         });
 
-                // 2. If not known, determine if it's a contract
+                // 2. If not known from repository, try to detect protocol
                 if (!counterparty.isKnownEntity()) {
-                    boolean isContract = contractDetectionService.isContract(counterparty.getAddress());
-                    CounterpartyType type = isContract ? CounterpartyType.CONTRACT : CounterpartyType.WALLET;
-                    counterparty.setType(type);
+                    // First try to detect protocol - this also checks if it's a known address
+                    String protocol = contractDetectionService.detectProtocol(address);
 
-                    // 3. Try to identify protocol if it's a contract
-                    if (isContract) {
-                        String protocol = contractDetectionService.detectProtocol(counterparty.getAddress());
-                        if (protocol != null && !protocol.isEmpty()) {
-                            counterparty.setProtocol(protocol);
+                    if (protocol != null && !protocol.isEmpty()) {
+                        // It's a known protocol
+                        counterparty.setProtocol(protocol);
+
+                        // Set name based on protocol if not already set
+                        if (counterparty.getName() == null || counterparty.getName().isEmpty()) {
                             counterparty.setName("Unknown " + protocol + " contract");
-                        } else {
-                            counterparty.setName("Unknown contract");
                         }
+
+                        counterparty.setType(CounterpartyType.PROTOCOL);
                     } else {
-                        counterparty.setName("Unknown wallet");
+                        // Not a known protocol, check if it's a contract
+                        boolean isContract = contractDetectionService.isContract(address);
+                        CounterpartyType type = isContract ? CounterpartyType.CONTRACT : CounterpartyType.WALLET;
+                        counterparty.setType(type);
+
+                        // Set default name based on type
+                        if (isContract) {
+                            counterparty.setName("Unknown contract");
+                        } else {
+                            counterparty.setName("Unknown wallet");
+                        }
                     }
                 }
             } catch (Exception e) {
