@@ -1,12 +1,13 @@
 package com.cypher.cardload.service;
 
+import com.cypher.cardload.model.TokenTransfer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.math.BigInteger;
-import java.time.LocalDate;
+import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Service
@@ -16,46 +17,45 @@ public class DataSyncService {
 
     private final BlockchainService blockchainService;
 
-    // Store the last processed block
-    private final AtomicReference<BigInteger> lastProcessedBlock = new AtomicReference<>(null);
+    // Store the last processed timestamp
+    private final AtomicReference<Instant> lastProcessedTimestamp = new AtomicReference<>(null);
 
     // Initialize on startup
     @Scheduled(initialDelay = 1000, fixedDelay = Long.MAX_VALUE)
     public void initialize() {
         try {
-            // Set the last processed block to the current block
-            BigInteger currentBlock = blockchainService.getCurrentBlockNumber();
-            lastProcessedBlock.set(currentBlock);
-            log.info("Initialized last processed block to {}", currentBlock);
+            Instant now = Instant.now();
+            lastProcessedTimestamp.set(now);
+            log.info("Initialized last processed timestamp to {}", now);
         } catch (Exception e) {
             log.error("Error initializing data sync service: ", e);
         }
     }
 
-    // Sync new blocks every 5 minutes
-//  TODO:  @Scheduled(fixedRate = 300000)
-    public void syncNewBlocks() {
+    // Sync new data every 5 minutes
+//    @Scheduled(fixedRate = 300000)
+    public void syncNewData() {
         try {
-            BigInteger currentBlock = blockchainService.getCurrentBlockNumber();
-            BigInteger lastBlock = lastProcessedBlock.get();
+            Instant now = Instant.now();
+            Instant last = lastProcessedTimestamp.get();
 
-            if (lastBlock == null) {
+            if (last == null) {
                 // Service not yet initialized
                 return;
             }
 
-            if (currentBlock.compareTo(lastBlock) > 0) {
-                log.info("Syncing blocks from {} to {}", lastBlock.add(BigInteger.ONE), currentBlock);
+            if (now.isAfter(last)) {
+                log.info("Syncing transfers from {} to {}", last, now);
+                List<TokenTransfer> transfers = blockchainService
+                        .getTokenTransfersToMasterWallet(last, now);
+                log.info("Synced {} transfers", transfers.size());
 
-                // Get transfers for the new blocks
-                blockchainService.getTokenTransfersToMasterWallet(lastBlock.add(BigInteger.ONE), currentBlock);
-
-                // Update last processed block
-                lastProcessedBlock.set(currentBlock);
-                log.info("Sync complete. Last processed block updated to {}", currentBlock);
+                // Update last processed timestamp
+                lastProcessedTimestamp.set(now);
+                log.info("Sync complete. Last processed timestamp updated to {}", now);
             }
         } catch (Exception e) {
-            log.error("Error syncing new blocks: ", e);
+            log.error("Error syncing data: ", e);
         }
     }
 }

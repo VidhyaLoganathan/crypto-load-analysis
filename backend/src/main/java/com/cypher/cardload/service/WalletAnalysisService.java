@@ -173,7 +173,7 @@ public class WalletAnalysisService {
 
                         // Set name based on protocol if not already set
                         if (counterparty.getName() == null || counterparty.getName().isEmpty()) {
-                            counterparty.setName("Unknown " + protocol + " contract");
+                            counterparty.setName(protocol + " contract");
                         }
 
                         counterparty.setType(CounterpartyType.PROTOCOL);
@@ -185,9 +185,9 @@ public class WalletAnalysisService {
 
                         // Set default name based on type
                         if (isContract) {
-                            counterparty.setName("Unknown contract");
+                            counterparty.setName("contract");
                         } else {
-                            counterparty.setName("Unknown wallet");
+                            counterparty.setName("wallet");
                         }
                     }
                 }

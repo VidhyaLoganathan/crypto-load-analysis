@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -149,11 +150,16 @@ public class LoadVolumeService {
             }
 
             try {
-                // Get block numbers from timestamps
-                var startBlock = blockchainService.getBlockNumberByTimestamp(startEpoch);
-                var endBlock = blockchainService.getBlockNumberByTimestamp(endEpoch);
+//                // Get block numbers from timestamps
+//                var startBlock = blockchainService.getBlockNumberByTimestamp(startEpoch);
+//                var endBlock = blockchainService.getBlockNumberByTimestamp(endEpoch);
+                //                return blockchainService.getTokenTransfersToMasterWallet(startBlock, endBlock);
 
-                return blockchainService.getTokenTransfersToMasterWallet(startBlock, endBlock);
+
+                Instant fromInstant = Instant.ofEpochSecond(startEpoch);
+                Instant toInstant   = Instant.ofEpochSecond(endEpoch);
+                return blockchainService.getTokenTransfersToMasterWallet(fromInstant, toInstant);
+
             } catch (Exception e) {
                 log.error("Error getting block numbers: {}", e.getMessage());
                 return new ArrayList<>();
