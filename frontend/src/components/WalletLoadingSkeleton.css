@@ -1,0 +1,42 @@
+/* WalletLoadingSkeleton.css */
+.loading-skeleton.wallet-loading {
+  padding: 20px 0;
+}
+
+.table-skeleton-header {
+  height: 40px;
+  width: 60%;
+  margin-bottom: 20px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+  border-radius: 4px;
+}
+
+.table-skeleton {
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.table-skeleton-row {
+  height: 50px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+  margin-bottom: 2px;
+}
+
+.table-skeleton-row.header-row {
+  height: 60px;
+  background: linear-gradient(90deg, #e8e8e8 25%, #d8d8d8 50%, #e8e8e8 75%);
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

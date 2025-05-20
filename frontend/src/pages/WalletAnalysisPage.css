@@ -1,0 +1,113 @@
+/* WalletAnalysisPage.css */
+.wallet-analysis-page {
+  display: flex;
+  flex-direction: column;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.wallet-header {
+  margin-bottom: 24px;
+  border-bottom: 1px solid #eaeaea;
+  padding-bottom: 12px;
+}
+
+.wallet-header h1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.wallet-main {
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  padding: 24px;
+}
+
+.search-container {
+  margin-bottom: 24px;
+}
+
+.results-container {
+  margin-bottom: 24px;
+  min-height: 400px;
+}
+
+.empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: #718096;
+  background-color: #f7fafc;
+  border-radius: 8px;
+  border: 1px dashed #e2e8f0;
+}
+
+.info-box {
+  margin-top: 24px;
+  padding: 16px;
+  background-color: #f7f7f7;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.info-row {
+  margin: 8px 0;
+}
+
+.info-row p {
+  margin: 6px 0;
+  color: #666;
+}
+
+.data-source-info {
+  display: flex;
+  justify-content: space-between;
+  margin: 10px 0;
+}
+
+.error-message {
+  padding: 16px;
+  margin: 20px 0;
+  background-color: #fff5f5;
+  color: #e53e3e;
+  border-left: 4px solid #e53e3e;
+  border-radius: 4px;
+}
+
+/* Data Source Badges */
+.data-source-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.data-source-badge.api {
+  background-color: #4caf50;
+  color: white;
+}
+
+.data-source-badge.simulator {
+  background-color: #ff9800;
+  color: white;
+}
+
+.data-source-badge.loading {
+  background-color: #2196f3;
+  color: white;
+}
+
+.data-source-badge.error {
+  background-color: #f44336;
+  color: white;
+}
+
+.data-source-badge.unknown {
+  background-color: #9e9e9e;
+  color: white;
+}
