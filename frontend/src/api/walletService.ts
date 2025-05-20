@@ -4,8 +4,8 @@ import axios from 'axios';
 // If you're using proxy in package.json, leave this empty
 const API_BASE_URL = '';
 
-// Spring Boot controller context path
-const API_CONTEXT_PATH = '/api/wallet-analysis';
+// Spring Boot controller context path - updated to match your controller
+const API_CONTEXT_PATH = '/api/v1/wallet';
 
 // Data source tracking
 export let walletDataSource = 'loading'; // 'api', 'simulator', 'loading', or 'error'
@@ -45,7 +45,8 @@ export async function fetchWalletAnalysis(walletAddress: string): Promise<Wallet
       throw new Error('Invalid wallet address');
     }
 
-    const apiUrl = `${API_BASE_URL}${API_CONTEXT_PATH}/counterparties?address=${walletAddress}`;
+    // Use the GET endpoint from your controller
+    const apiUrl = `${API_BASE_URL}${API_CONTEXT_PATH}/analyze/${walletAddress}?limit=10`;
 
     console.log(`Fetching wallet analysis from: ${apiUrl}`);
 
@@ -54,7 +55,7 @@ export async function fetchWalletAnalysis(walletAddress: string): Promise<Wallet
     console.log('Wallet API Response:', response.data);
 
     // Check if response data is valid
-    if (!response.data || !response.data.topCounterparties) {
+    if (!response.data) {
       console.warn('Invalid response format from API:', response.data);
       walletDataSource = 'simulator';
       return generateMockWalletData(walletAddress);
@@ -63,7 +64,12 @@ export async function fetchWalletAnalysis(walletAddress: string): Promise<Wallet
     // Set data source to API
     walletDataSource = 'api';
 
-    return response.data;
+    // Transform the data if necessary to match our frontend format
+    // This mapping depends on your WalletAnalysisResponse structure in the backend
+    return {
+      walletAddress: response.data.walletAddress || walletAddress,
+      topCounterparties: transformCounterparties(response.data.counterparties || [])
+    };
   } catch (error) {
     console.error('Error fetching wallet analysis:', error);
 
@@ -73,6 +79,44 @@ export async function fetchWalletAnalysis(walletAddress: string): Promise<Wallet
     // Fall back to mock data
     return generateMockWalletData(walletAddress);
   }
+}
+
+// Transform counterparties from backend format to frontend format
+function transformCounterparties(backendCounterparties: any[]): Counterparty[] {
+  return backendCounterparties.map(cp => {
+    // Identify protocol if it's a known address
+    const protocolInfo = KNOWN_PROTOCOLS[cp.address.toLowerCase()] || {
+      name: cp.name || 'Unknown',
+      type: determineType(cp)
+    };
+
+    return {
+      address: cp.address,
+      name: cp.name || protocolInfo.name || 'Unknown',
+      type: protocolInfo.type || determineType(cp),
+      transactionCount: cp.transactionCount || cp.txCount || 0,
+      protocol: protocolInfo.name !== 'Unknown' ? protocolInfo.name : undefined
+    };
+  });
+}
+
+// Helper function to determine entity type from backend data
+function determineType(counterparty: any): 'wallet' | 'contract' | 'protocol' | 'exchange' {
+  // Use the backend type if available
+  if (counterparty.type) {
+    const type = counterparty.type.toLowerCase();
+    if (type === 'wallet' || type === 'contract' || type === 'protocol' || type === 'exchange') {
+      return type as 'wallet' | 'contract' | 'protocol' | 'exchange';
+    }
+  }
+
+  // Otherwise make a guess based on available data
+  if (counterparty.isContract) return 'contract';
+  if (counterparty.isExchange) return 'exchange';
+  if (counterparty.isProtocol) return 'protocol';
+
+  // Default to wallet
+  return 'wallet';
 }
 
 // Generate mock data for development/fallback
