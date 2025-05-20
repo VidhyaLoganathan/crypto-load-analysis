@@ -3,6 +3,7 @@ import LoadVolumeChart from './components/LoadVolumeChart';
 import TimeframeSelector from './components/TimeFrameSelector';
 import useLoadData from './hooks/useLoadData';
 import LoadingSkeleton from './components/LoadingSkeleton';
+import { currentDataSource } from './api/dataService';
 import './App.css';
 
 type Timeframe = 'daily' | 'weekly' | 'monthly';
@@ -13,6 +14,36 @@ function App() {
 
   const handleTimeframeChange = (newTimeframe: Timeframe) => {
     setTimeframe(newTimeframe);
+  };
+
+  // Determine the data source badge color and text
+  const getDataSourceBadge = (source: string) => {
+    let badgeClass = '';
+    let text = '';
+
+    switch (source) {
+      case 'api':
+        badgeClass = 'data-source-badge api';
+        text = 'Backend API';
+        break;
+      case 'simulator':
+        badgeClass = 'data-source-badge simulator';
+        text = 'Simulator';
+        break;
+      case 'loading':
+        badgeClass = 'data-source-badge loading';
+        text = 'Loading...';
+        break;
+      case 'error':
+        badgeClass = 'data-source-badge error';
+        text = 'Error (Using Fallback)';
+        break;
+      default:
+        badgeClass = 'data-source-badge unknown';
+        text = 'Unknown Source';
+    }
+
+    return <span className={badgeClass}>{text}</span>;
   };
 
   return (
@@ -43,9 +74,22 @@ function App() {
         )}
 
         <div className="info-box">
-          <p>Master Wallet: 0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD</p>
-          <p>Data Source: Base Chain + Aerodrome Finance (for USD conversion)</p>
-          <p>Status: {loading ? 'Loading...' : error ? 'Error connecting to backend' : 'Connected to backend'}</p>
+          <div className="info-row">
+            <p>Master Wallet: 0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD</p>
+          </div>
+
+          <div className="info-row data-source-info">
+            <div>
+              <strong>Volume Data Source:</strong> {getDataSourceBadge(currentDataSource.volumeData)}
+            </div>
+            <div>
+              <strong>Summary Data Source:</strong> {getDataSourceBadge(currentDataSource.summaryData)}
+            </div>
+          </div>
+
+          <div className="info-row">
+            <p>Data Source: Base Chain + Aerodrome Finance (for USD conversion)</p>
+          </div>
         </div>
       </main>
     </div>

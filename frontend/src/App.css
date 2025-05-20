@@ -47,3 +47,68 @@
   border-left: 4px solid #e53e3e;
   border-radius: 4px;
 }
+
+/* Additional CSS for data source badges */
+
+.data-source-info {
+  display: flex;
+  justify-content: space-between;
+  margin: 10px 0;
+}
+
+.data-source-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.data-source-badge.api {
+  background-color: #4caf50;
+  color: white;
+}
+
+.data-source-badge.simulator {
+  background-color: #ff9800;
+  color: white;
+}
+
+.data-source-badge.loading {
+  background-color: #2196f3;
+  color: white;
+}
+
+.data-source-badge.error {
+  background-color: #f44336;
+  color: white;
+}
+
+.data-source-badge.unknown {
+  background-color: #9e9e9e;
+  color: white;
+}
+
+.info-row {
+  margin: 8px 0;
+}
+
+/* Make the info box more organized */
+.info-box {
+  margin-top: 24px;
+  padding: 16px;
+  background-color: #f7f7f7;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+/* Override existing styles for the error message */
+.error-message {
+  padding: 16px;
+  margin: 20px 0;
+  background-color: #fff5f5;
+  color: #e53e3e;
+  border-left: 4px solid #e53e3e;
+  border-radius: 4px;
+}
