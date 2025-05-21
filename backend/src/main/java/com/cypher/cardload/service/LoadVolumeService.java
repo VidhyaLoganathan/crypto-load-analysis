@@ -1,19 +1,20 @@
 package com.cypher.cardload.service;
 
+import com.cypher.cardload.config.Constants;
 import com.cypher.cardload.model.LoadVolumeData;
 import com.cypher.cardload.model.TokenTransfer;
+import com.cypher.cardload.repository.TokenTransferRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.*;
+import java.time.temporal.ChronoUnit;
 import java.time.temporal.WeekFields;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -21,90 +22,106 @@ import java.util.stream.Collectors;
 public class LoadVolumeService {
 
     private final BlockchainService blockchainService;
-    private final TokenPriceService tokenPriceService;
+    private final TokenTransferRepository transferRepo;
+
+    /**
+     * Ensure every calendar day in [startDate…endDate] is backed by DB data.
+     * For any missing day, fetch its transfers & persist.
+     */
+    private List<TokenTransfer> loadOrFetchPerDay(LocalDate startDate, LocalDate endDate) {
+        Instant startInstant = startDate.atStartOfDay(ZoneOffset.UTC).toInstant();
+        Instant endInstant   = endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+
+        // 1) load existing
+        List<TokenTransfer> existing = transferRepo.findByTimestampBetween(
+                LocalDateTime.ofInstant(startInstant, ZoneOffset.UTC),
+                LocalDateTime.ofInstant(endInstant,   ZoneOffset.UTC)
+        );
+
+        // 2) build set of all dates
+        long days = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        Set<LocalDate> allDates = Stream.iterate(startDate, d -> d.plusDays(1))
+                .limit(days)
+                .collect(Collectors.toSet());
+
+        // 3) find covered dates
+        Set<LocalDate> covered = existing.stream()
+                .map(t -> t.getTimestamp().toLocalDate())
+                .collect(Collectors.toSet());
+
+        // 4) for each missing date, fetch & persist
+        for (LocalDate d : allDates) {
+            if (!covered.contains(d)) {
+                Instant from = d.atStartOfDay(ZoneOffset.UTC).toInstant();
+                Instant to   = d.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+                log.info("No DB data for {}; fetching transfers…", d);
+                List<TokenTransfer> fetched =
+                        blockchainService.getTokenTransfersToMasterWallet(from, to);
+
+                if (!fetched.isEmpty()) {
+                    transferRepo.saveAll(fetched);
+                    existing.addAll(fetched);
+                    log.info("Fetched & saved {} transfers for {}", fetched.size(), d);
+                } else {
+                    log.info("No transfers on {}", d);
+                }
+            }
+        }
+        return existing;
+    }
 
     public List<LoadVolumeData> getDailyLoadVolume(LocalDate startDate, LocalDate endDate) {
-        List<TokenTransfer> transfers = fetchTransfersForDateRange(startDate, endDate);
-        // Group by date
-        Map<LocalDate, List<TokenTransfer>> transfersByDate = transfers.stream()
-                .collect(Collectors.groupingBy(t -> t.getTimestamp().toLocalDate()));
-        // Sort and calculate
-        return transfersByDate.entrySet().stream()
+        List<TokenTransfer> all = loadOrFetchPerDay(startDate, endDate);
+
+        return all.stream()
+                .collect(Collectors.groupingBy(t -> t.getTimestamp().toLocalDate()))
+                .entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .map(e -> calculateVolumeData(e.getKey(), e.getValue()))
                 .collect(Collectors.toList());
     }
 
     public List<LoadVolumeData> getWeeklyLoadVolume(LocalDate startDate, LocalDate endDate) {
-        List<TokenTransfer> transfers = fetchTransfersForDateRange(startDate, endDate);
+        List<TokenTransfer> all = loadOrFetchPerDay(startDate, endDate);
+
         WeekFields wf = WeekFields.of(Locale.getDefault());
-        Map<String, List<TokenTransfer>> byWeek = transfers.stream()
+        Map<LocalDate, List<TokenTransfer>> byWeek = all.stream()
                 .collect(Collectors.groupingBy(t -> {
                     LocalDate d = t.getTimestamp().toLocalDate();
                     int y = d.getYear(), w = d.get(wf.weekOfWeekBasedYear());
-                    return String.format("%d-W%02d", y, w);
+                    // represent week by its Monday
+                    return LocalDate.ofYearDay(y, 1)
+                            .with(wf.weekBasedYear(), y)
+                            .with(wf.weekOfWeekBasedYear(), w)
+                            .with(wf.dayOfWeek(), 1);
                 }));
+
         return byWeek.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .map(e -> {
-                    LocalDate weekDate = e.getValue().stream()
-                            .map(t -> t.getTimestamp().toLocalDate())
-                            .min(LocalDate::compareTo)
-                            .orElse(startDate);
-                    return calculateVolumeData(weekDate, e.getValue());
-                })
+                .map(e -> calculateVolumeData(e.getKey(), e.getValue()))
                 .collect(Collectors.toList());
     }
 
     public List<LoadVolumeData> getMonthlyLoadVolume(LocalDate startDate, LocalDate endDate) {
-        List<TokenTransfer> transfers = fetchTransfersForDateRange(startDate, endDate);
-        Map<String, List<TokenTransfer>> byMonth = transfers.stream()
-                .collect(Collectors.groupingBy(t -> {
-                    LocalDate d = t.getTimestamp().toLocalDate();
-                    return String.format("%d-%02d", d.getYear(), d.getMonthValue());
-                }));
+        List<TokenTransfer> all = loadOrFetchPerDay(startDate, endDate);
+
+        Map<YearMonth, List<TokenTransfer>> byMonth = all.stream()
+                .collect(Collectors.groupingBy(t ->
+                        YearMonth.from(t.getTimestamp().toLocalDate())
+                ));
+
         return byMonth.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .map(e -> {
-                    String[] parts = e.getKey().split("-");
-                    LocalDate monthDate = LocalDate.of(
-                            Integer.parseInt(parts[0]),
-                            Integer.parseInt(parts[1]),
-                            1
-                    );
-                    return calculateVolumeData(monthDate, e.getValue());
+                    LocalDate monthStart = e.getKey().atDay(1);
+                    return calculateVolumeData(monthStart, e.getValue());
                 })
                 .collect(Collectors.toList());
     }
 
     public LoadVolumeData getSummary(LocalDate startDate, LocalDate endDate) {
-        List<TokenTransfer> transfers = fetchTransfersForDateRange(startDate, endDate);
-        return calculateVolumeData(startDate, transfers);
-    }
-
-    private List<TokenTransfer> fetchTransfersForDateRange(LocalDate startDate, LocalDate endDate) {
-        try {
-            // adjust to valid range
-            if (startDate.getYear() < 2025) {
-                startDate = LocalDate.of(2025, 1, 1);
-            }
-            if (LocalDate.now().isBefore(endDate)) {
-                endDate = LocalDate.now();
-            }
-
-            // preload all ETH/USD rates in one go
-            tokenPriceService.preloadEthUsdPrices(startDate, endDate);
-
-            // convert to instants
-            Instant from = startDate.atStartOfDay().toInstant(ZoneOffset.UTC);
-            Instant to   = endDate.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
-
-            return blockchainService.getTokenTransfersToMasterWallet(from, to);
-        } catch (Exception e) {
-            log.error("Error fetching transfers for date range {}–{}: {}",
-                    startDate, endDate, e.getMessage());
-            return Collections.emptyList();
-        }
+        List<TokenTransfer> all = loadOrFetchPerDay(startDate, endDate);
+        return calculateVolumeData(startDate, all);
     }
 
     private LoadVolumeData calculateVolumeData(LocalDate date, List<TokenTransfer> transfers) {
@@ -114,11 +131,7 @@ public class LoadVolumeService {
         for (TokenTransfer t : transfers) {
             BigDecimal usd = t.getUsdValue();
             totalUsd = totalUsd.add(usd);
-            breakdown.merge(
-                    t.getTokenSymbol(),
-                    usd,
-                    BigDecimal::add
-            );
+            breakdown.merge(t.getTokenSymbol(), usd, BigDecimal::add);
         }
 
         return LoadVolumeData.builder()
