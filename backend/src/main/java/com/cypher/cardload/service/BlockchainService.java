@@ -58,6 +58,8 @@ public class BlockchainService {
             params.put("fromTimestamp", ISO_FORMATTER.format(fromTimestamp));
             params.put("toTimestamp", ISO_FORMATTER.format(toTimestamp));
             params.put("toAddress", Constants.MASTER_WALLET_ADDRESS);
+            params.put("withMetadata",true);
+            params.put("maxCount", "0x1F4");
             if (pageKey != null) params.put("pageKey", pageKey);
             ArrayNode categories = params.putArray("category");
             categories.add("external").add("erc20");

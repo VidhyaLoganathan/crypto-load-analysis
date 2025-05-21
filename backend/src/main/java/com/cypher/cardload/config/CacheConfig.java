@@ -22,7 +22,7 @@ public class CacheConfig {
 
     @Bean
     public CacheManager cacheManager(Caffeine<Object, Object> caffeine) {
-        CaffeineCacheManager cacheManager = new CaffeineCacheManager();
+        CaffeineCacheManager cacheManager = new CaffeineCacheManager("ethUsdPrices","tokenUsdPrices");
         cacheManager.setCaffeine(caffeine);
         return cacheManager;
     }

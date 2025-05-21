@@ -27,7 +27,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Health, Info, and Debug endpoints for Cypher Load Analytics API.
+ * Health, Info, and Debug endpoints for Cypher Load Analytics .
  */
 @RestController
 @RequestMapping("/api")
@@ -82,9 +82,9 @@ public class HealthController {
     @GetMapping("/info")
     public ResponseEntity<Map<String, Object>> apiInfo() {
         Map<String, Object> resp = new HashMap<>();
-        resp.put("name", "Cypher Load Analytics API");
+        resp.put("name", "Cypher Wallet");
         resp.put("version", "1.0.0");
-        resp.put("description", "API for Cypher crypto card load analytics");
+        resp.put("description", "API for Cypher crypto card load analytics and wallet analysis");
         resp.put("simulator_mode", isSimulatorMode());
         resp.put("endpoints", ENDPOINTS);
         return ResponseEntity.ok(resp);
