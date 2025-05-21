@@ -112,7 +112,7 @@ mvn test
 ## **API Endpoints**
 
    | Method | Path                               | Description                                        |
-      | ------ |------------------------------------|----------------------------------------------------|
+   | ------ |------------------------------------|----------------------------------------------------|
    | GET    | `/api/load-volume/daily`           | Query params: `startDate`, `endDate` (YYYY-MM-DD)  |
    | GET    | `/api/load-volume/weekly`          | Query params: `startDate`, `endDate`               |
    | GET    | `/api/load-volume/monthly`         | Query params: `startDate`, `endDate`               |
@@ -120,7 +120,7 @@ mvn test
    | GET    | `/api/v1/wallet/analyze/{address}` | Path param: wallet address                         |
    | GET    | `/api/health`                      | Health check                                       |
    | GET    | `/api/info`                        | API information                                    |
-   | GET    | `/api/debug`                       | Debug diagnostics                                        |
+   | GET    | `/api/debug`                       | Debug diagnostics                                  |
 
 
 
