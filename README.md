@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Spring Boot application powers the **Cypher Card Load Analytics** take-home assignment. It provides:
+This Spring Boot application powers the **Cypher Card Load Analytics** . It provides:
 
 - **Load Volume Endpoints**
     - Daily, weekly, and monthly token load volumes (in USD) for the master wallet.
@@ -47,13 +47,13 @@ follow the below step to start docker, if installing docker for the first time.
 open /Applications/Docker.app
 ```
 
-3. Download the zip file
+3. Clone the github repository
 ```bash
-
+git clone git@github.com:VidhyaLoganathan/crypto-load-analysis.git
 ```
 4. Go to the directory
 ```bash
-/<path_to_downloaded_folder>/AllocationTool
+/<path_to_downloaded_folder>/<project_name>
 ```
 ---
 
