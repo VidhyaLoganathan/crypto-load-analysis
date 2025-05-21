@@ -4,6 +4,7 @@ import com.cypher.cardload.model.TokenTransfer;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Repository for persisting and querying TokenTransfer entities.
@@ -20,4 +21,8 @@ public interface TokenTransferRepository
      * @return a list of TokenTransfer within the specified time range
      */
     List<TokenTransfer> findByTimestampBetween(LocalDateTime start, LocalDateTime end);
+
+    Optional<TokenTransfer> findTopByOrderByTimestampDesc();
+
+    boolean existsByTimestampBetween(LocalDateTime start, LocalDateTime end);
 }

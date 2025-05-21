@@ -66,10 +66,13 @@ public class BlockchainService {
                 BigInteger s = start, e = end;
                 futures.add(CompletableFuture.supplyAsync(() -> {
                     try {
+                        Thread.sleep(500);
                         return fetchAssetTransfersChunk(s, e);
                     } catch (IOException ex) {
                         log.error("Chunk {}–{} failed", s, e, ex);
                         return Collections.emptyList();
+                    } catch (InterruptedException ex) {
+                        throw new RuntimeException(ex);
                     }
                 }, executor));
                 start = end.add(BigInteger.ONE);
