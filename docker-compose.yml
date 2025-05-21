@@ -54,9 +54,6 @@ services:
       context: ./frontend
     image: cardload-frontend
     container_name: cardload-frontend
-    depends_on:
-      backend:
-        condition: service_healthy
     ports:
       - "3000:3000"
     networks:
