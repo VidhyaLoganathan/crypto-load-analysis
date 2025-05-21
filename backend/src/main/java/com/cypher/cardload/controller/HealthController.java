@@ -9,13 +9,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.cypher.cardload.service.TokenPriceService;
-import com.cypher.cardload.service.PriceService;
 import com.cypher.cardload.service.ContractDetectionService;
 import com.cypher.cardload.service.WalletAnalysisService;
-import com.cypher.cardload.service.SimulatedLoadVolumeService;
+import com.cypher.cardload.simulator.SimulatedLoadVolumeService;
 import com.cypher.cardload.service.TransactionCacheService;
 import com.cypher.cardload.service.LoadVolumeService;
-import com.cypher.cardload.service.DataSyncService;
 import com.cypher.cardload.service.LoadSimulatorService;
 import com.cypher.cardload.service.TransactionService;
 import com.cypher.cardload.service.BlockchainService;
@@ -41,13 +39,11 @@ public class HealthController {
 
     // Injected Services
     private final TokenPriceService tokenPriceService;
-    private final PriceService priceService;
     private final ContractDetectionService contractDetectionService;
     private final WalletAnalysisService walletAnalysisService;
     private final SimulatedLoadVolumeService simulatedLoadVolumeService;
     private final TransactionCacheService transactionCacheService;
     private final LoadVolumeService loadVolumeService;
-    private final DataSyncService dataSyncService;
     private final LoadSimulatorService loadSimulatorService;
     private final TransactionService transactionService;
     private final BlockchainService blockchainService;

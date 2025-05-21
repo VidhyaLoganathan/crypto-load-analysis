@@ -2,8 +2,8 @@ package com.cypher.cardload.controller;
 
 import com.cypher.cardload.model.CounterpartyInfo;
 import com.cypher.cardload.model.CounterpartyType;
-import com.cypher.cardload.model.WalletAnalysisRequest;
-import com.cypher.cardload.model.WalletAnalysisResponse;
+import com.cypher.cardload.dto.WalletAnalysisRequest;
+import com.cypher.cardload.dto.WalletAnalysisResponse;
 import com.cypher.cardload.service.WalletAnalysisService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;

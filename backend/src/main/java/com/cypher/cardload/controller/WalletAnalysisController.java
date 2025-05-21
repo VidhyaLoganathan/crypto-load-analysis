@@ -1,7 +1,7 @@
 package com.cypher.cardload.controller;
 
-import com.cypher.cardload.model.WalletAnalysisRequest;
-import com.cypher.cardload.model.WalletAnalysisResponse;
+import com.cypher.cardload.dto.WalletAnalysisRequest;
+import com.cypher.cardload.dto.WalletAnalysisResponse;
 import com.cypher.cardload.service.WalletAnalysisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

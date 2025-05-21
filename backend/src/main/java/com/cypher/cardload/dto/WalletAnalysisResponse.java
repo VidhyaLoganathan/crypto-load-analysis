@@ -1,6 +1,8 @@
-package com.cypher.cardload.model;
+package com.cypher.cardload.dto;
 
 import java.util.List;
+
+import com.cypher.cardload.model.CounterpartyInfo;
 import lombok.Builder;
 import lombok.Data;
 

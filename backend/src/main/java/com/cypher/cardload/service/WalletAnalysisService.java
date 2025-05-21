@@ -2,7 +2,7 @@ package com.cypher.cardload.service;
 
 import com.cypher.cardload.model.CounterpartyInfo;
 import com.cypher.cardload.model.CounterpartyType;
-import com.cypher.cardload.model.WalletAnalysisResponse;
+import com.cypher.cardload.dto.WalletAnalysisResponse;
 import com.cypher.cardload.repository.CounterpartyRepository;
 import com.cypher.cardload.util.TransactionUtils;
 import lombok.RequiredArgsConstructor;

@@ -3,7 +3,7 @@ package com.cypher.cardload.controller;
 import com.cypher.cardload.model.LoadVolumeData;
 import com.cypher.cardload.service.BlockchainService;
 import com.cypher.cardload.service.LoadVolumeService;
-import com.cypher.cardload.service.SimulatedLoadVolumeService;
+import com.cypher.cardload.simulator.SimulatedLoadVolumeService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;

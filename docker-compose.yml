@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: cardload-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: cardload
+      MYSQL_USER: appuser
+      MYSQL_PASSWORD: secretpass
+      TZ: America/Los_Angeles
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d
+    networks:
+      - cardload-network
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u${MYSQL_USER}", "-p${MYSQL_PASSWORD}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    platform: linux/amd64
+    build:
+      context: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    image: cardload-backend
+    container_name: cardload-backend
+    ports:
+      - "8080:8080"
+    networks:
+      - cardload-network
+    entrypoint: >
+      sh -c "
+        echo '⏳ Sleeping 40s for DB to finish init…' &&
+        sleep 40 &&
+        echo '🚀 Starting backend' &&
+        exec java -jar /backend.jar
+      "
+    environment:
+      LOAD_SIMULATOR_ENABLED: "false"
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/cardload?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: appuser
+      SPRING_DATASOURCE_PASSWORD: secretpass
+
+  frontend:
+    platform: linux/amd64
+    build:
+      context: ./frontend
+    image: cardload-frontend
+    container_name: cardload-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    networks:
+      - cardload-network
+
+networks:
+  cardload-network:
+    driver: bridge
+volumes:
+  db_data:

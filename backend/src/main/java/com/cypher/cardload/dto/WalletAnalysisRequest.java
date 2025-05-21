@@ -1,4 +1,4 @@
-package com.cypher.cardload.model;
+package com.cypher.cardload.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;

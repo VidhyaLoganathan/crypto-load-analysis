@@ -1,6 +1,7 @@
-package com.cypher.cardload.service;
+package com.cypher.cardload.simulator;
 
 import com.cypher.cardload.model.LoadVolumeData;
+import com.cypher.cardload.service.LoadSimulatorService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
