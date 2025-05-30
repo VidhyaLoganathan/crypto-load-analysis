@@ -9,7 +9,19 @@ public class Constants {
     //Alchemy API url with key
     public static final String ALCHEMY_API_URL = "https://base-mainnet.g.alchemy.com/v2/5cTrJMY4BHtVjgKNC31Wek_Knoh2Yn5R";
 
+    // com.cypher.cardload.config.Constants
+    public static final String BASESCAN_API_URL = "https://api.basescan.org/api";
+    public static final String BASESCAN_API_KEY = "WNXSTW5WD2TITFH6K7VF4BKFSKV2IVTTRT";
+
     public static final String ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+    public static final String CRYPTOCOMPARE_API_URL = "https://min-api.cryptocompare.com/data/price";
+    public static final String CRYPTOCOMPARE_HISTORICAL_URL       = "https://min-api.cryptocompare.com/data/pricehistorical";
+
+    public static final String COINGECKO_API_URL    = "https://api.coingecko.com/api/v3";
+
+    public static final String CRYPTOCOMPARE_API_KEY = "ca43ed35f43d8be1e37e061d0149817ece371f11609d5177c7a76886105e6539";
+
 
     // Common ERC-20 tokens on Base
     public static final Map<String, String> TOKEN_ADDRESSES = Map.of(

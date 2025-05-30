@@ -225,7 +225,6 @@ backend/
 
 ---
 ## Author
-Vidhya Loganathan <
-vidhya7apr@gmail.com >
+Vidhya Loganathan <vidhya7apr@gmail.com >
 
 ---

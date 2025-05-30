@@ -1,231 +1,226 @@
 package com.cypher.cardload.service;
 
-import com.cypher.cardload.config.Constants;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.cypher.cardload.util.*;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestTemplate;
-import org.web3j.abi.FunctionEncoder;
-import org.web3j.abi.FunctionReturnDecoder;
-import org.web3j.abi.TypeReference;
-import org.web3j.abi.datatypes.Function;
-import org.web3j.abi.datatypes.Type;
-import org.web3j.abi.datatypes.generated.Uint256;
+import org.web3j.abi.datatypes.Address;
 import org.web3j.protocol.Web3j;
-import org.web3j.protocol.Web3jService;
-import org.web3j.protocol.core.DefaultBlockParameter;
-import org.web3j.protocol.core.methods.request.Transaction;
-import org.web3j.protocol.core.methods.response.EthCall;
-import org.web3j.protocol.core.methods.response.EthBlock;
-import org.web3j.protocol.http.HttpService;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.math.RoundingMode;
-import java.time.*;
-import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
-@Service
+/**
+ * TokenPriceService – on-chain first, off-chain only as last resort.
+ * NOTE : All price values are estimated price at the day of transaction
+ * Sample Example :
+ * <p>
+ * [2025-05-28] com.cypher.cardload.service.BlockchainService -
+ * ERC20 tx=0x66ddc01fff67fd739a6944275fbfcb6776bbab621009673862cfe1a1daf833b7
+ * block=30802049
+ * totalUsd=$14.0138
+ * </p>
+ */
 @Slf4j
+@Service
 @RequiredArgsConstructor
 public class TokenPriceService {
 
-    private final RestTemplate rest = new RestTemplate();
-    private final Web3jService web3jService;
     private final Web3j web3j;
+    private final ClPoolResolver poolResolver;
+    private final BlockUtil blockUtil;
+     private final OffChainService offChainService;
 
-    // In-memory cache for daily ETH/USD prices
-    private final Map<LocalDate, BigDecimal> ethUsdCache = new ConcurrentHashMap<>();
+    /** Canonical WETH address on Base. */
+    private static final Address WETH = new Address("0x4200000000000000000000000000000000000006");
 
-    public TokenPriceService() {
-        // Inline a Base RPC endpoint for Web3j
-        HttpService http = new HttpService("https://mainnet.base.org");
-        this.web3jService = http;
-        this.web3j        = Web3j.build(http);
-    }
+    /** Quote tokens we treat as $1. Ranked by typical liquidity on Base. */
+    private static final List<Address> KNOWN_TOKENS = List.of(
+            new Address("0xd9fcd98c322942075a5c3860693e9f4f03aae07b"), // USDbC
+            new Address("0xaf88d065e77c8cC2239327C5EDb3A432268e5831"), // USDC.e
+            new Address("0xda10009cbd5d07dd0cecc66161fc93d7c9000da1"), // DAI
+            new Address("0x5f98805a4e8be255a32880fdec7f6728c6568ba0"), // LUSD
+            new Address("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"), // USDC on Base
+            new Address("0xfde4c96c8593536e31f229ea8f37b2ada2699bb2"), // USDT on Base
+            new Address("0xb79dd08ea68a908a97220c76d19a6aa9cbde4376"), // USD+
+            new Address("0x909DBdE1eBE906Af95660033e478D59EFe831fED")  // FRAX
+    );
 
-    /**
-     * Bulk‐preload ETH→USD prices for each day in [from…to], using CoinGecko's market_chart/range.
-     * Populates ethUsdCache so subsequent lookups are O(1).
-     */
-    public void preloadEthUsdPrices(LocalDate from, LocalDate to) {
-        long fromTs = from.atStartOfDay(ZoneOffset.UTC).toEpochSecond();
-        long   toTs = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toEpochSecond();
-        String url = "https://api.coingecko.com/api/v3/coins/ethereum/market_chart/range"
-                + "?vs_currency=usd"
-                + "&from=" + fromTs
-                + "&to="   + toTs;
 
-        JsonNode root = rest.getForObject(url, JsonNode.class);
-        for (JsonNode point : root.path("prices")) {
-            long    ms    = point.get(0).asLong();
-            BigDecimal price = new BigDecimal(point.get(1).asText());
-            LocalDate d    = Instant.ofEpochMilli(ms)
-                    .atZone(ZoneOffset.UTC)
-                    .toLocalDate();
-            ethUsdCache.putIfAbsent(d, price);
-        }
-        log.info("Preloaded ETH/USD prices for {}→{} ({} entries)", from, to, ethUsdCache.size());
-    }
+    @Value("${pricing.minReserveUsd:50000}")
+    private BigDecimal minReserveUsd;
+    @Value("${pricing.minVolumeUsd:5000}")
+    private BigDecimal minVolumeUsd;
 
-    /**
-     * O(1) lookup of ETH→USD for the day of `timestamp`.
-     * If missing, falls back to CoinGecko history endpoint (once per date), then CryptoCompare, then on‐chain.
-     */
-    public BigDecimal getEthUsdPrice(LocalDateTime timestamp) {
-        LocalDate date = timestamp.atZone(ZoneOffset.UTC).toLocalDate();
-        // Fast path: in-memory
-        BigDecimal cached = ethUsdCache.get(date);
-        if (cached != null) {
-            return cached;
-        }
-        // Fallback to per-date CoinGecko
-        return fetchEthUsdForDate(date)
-                .or(() -> Optional.of(fetchEthUsdFromCryptoCompare(timestamp)))
-                .orElseGet(() -> getOnChainEthUsdPrice(timestamp));
-    }
+    /** Cache (token, UTC-day) ➜ price to avoid duplicate chain/API hits. */
+    private final Cache<TokenDayKey, BigDecimal> priceCache = Caffeine.newBuilder()
+            .expireAfterWrite(24, TimeUnit.HOURS)
+            .maximumSize(100_000)
+            .build();
 
-    @Cacheable(value = "ethUsdPrices", key = "#timestamp.toLocalDate()")
-    private Optional<BigDecimal> fetchEthUsdForDate(LocalDate date) {
-        String dateStr = date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
-        String url     = "https://api.coingecko.com/api/v3/coins/ethereum/history"
-                + "?date=" + dateStr
-                + "&localization=false";
-        try {
-            JsonNode root = rest.getForObject(url, JsonNode.class);
-            BigDecimal usd = new BigDecimal(
-                    root.path("market_data")
-                            .path("current_price")
-                            .path("usd")
-                            .asText()
-            );
-            ethUsdCache.put(date, usd);
-            log.debug("CoinGecko {} → USD = {}", dateStr, usd);
-            return Optional.of(usd);
-        } catch (HttpClientErrorException e) {
-            if (e.getStatusCode().value() == 429) {
-                log.warn("CoinGecko rate limit on {}: {}", dateStr, e.getStatusCode());
-            } else {
-                log.warn("CoinGecko lookup failed for {}: {}", dateStr, e.getMessage());
-            }
-        } catch (Exception e) {
-            log.warn("CoinGecko error for {}: {}", dateStr, e.getMessage());
-        }
-        return Optional.empty();
-    }
-
-    private BigDecimal fetchEthUsdFromCryptoCompare(LocalDateTime timestamp) {
-        long unix = timestamp.toEpochSecond(ZoneOffset.UTC);
-        String url = "https://min-api.cryptocompare.com/data/pricehistorical"
-                + "?fsym=ETH&tsyms=USD&ts=" + unix;
-        try {
-            JsonNode node = rest.getForObject(url, JsonNode.class);
-            BigDecimal usd = new BigDecimal(node.path("ETH").path("USD").asText());
-            ethUsdCache.put(timestamp.toLocalDate(), usd);
-            log.debug("CryptoCompare {} → USD = {}", unix, usd);
-            return usd;
-        } catch (Exception e) {
-            log.warn("CryptoCompare lookup failed for {}: {}", unix, e.getMessage());
-            return null;
-        }
-    }
-
-    private BigDecimal getOnChainEthUsdPrice(LocalDateTime timestamp) {
-        try {
-            BigInteger block = findBlockByBinarySearch(timestamp);
-            String pool      = Constants.AERODROME_POOL_ADDRESSES.get("USDC-ETH");
-            BigInteger[] p   = getPoolPrices(pool, DefaultBlockParameter.valueOf(block));
-            BigDecimal price = new BigDecimal(p[1])
-                    .multiply(BigDecimal.TEN.pow(18))
-                    .divide(new BigDecimal(p[0]).multiply(BigDecimal.TEN.pow(6)),
-                            18, RoundingMode.HALF_UP);
-            ethUsdCache.put(timestamp.toLocalDate(), price);
-            return price;
-        } catch (Exception e) {
-            log.error("On-chain ETH price failed for {}: {}", timestamp, e.getMessage());
-            return BigDecimal.valueOf(2650.00);
-        }
-    }
-
-    private BigInteger findBlockByBinarySearch(LocalDateTime ts) throws IOException {
-        Instant target = ts.toInstant(ZoneOffset.UTC);
-        BigInteger low  = BigInteger.ZERO;
-        BigInteger high = web3j.ethBlockNumber().send().getBlockNumber();
-        while (low.compareTo(high) < 0) {
-            BigInteger mid = low.add(high).shiftRight(1);
-            EthBlock block = web3j.ethGetBlockByNumber(
-                    DefaultBlockParameter.valueOf(mid), false).send();
-            Instant midTs  = Instant.ofEpochSecond(block.getBlock().getTimestamp().longValue());
-            if (midTs.isBefore(target)) low = mid.add(BigInteger.ONE);
-            else                        high = mid;
-        }
-        return low;
-    }
-
-    /**
-     * Generic token→USD: ETH/WETH via above; USDC/USDT =1; DAI via pool; else =1.
-     */
-    public BigDecimal getTokenUsdPrice(String tokenAddress, LocalDateTime timestamp) {
-        String addr = tokenAddress.toLowerCase();
-        if (addr.equals(Constants.TOKEN_ADDRESSES.get("ETH").toLowerCase())
-                || addr.equals(Constants.TOKEN_ADDRESSES.get("WETH").toLowerCase())) {
-            return getEthUsdPrice(timestamp);
-        }
-        if (addr.equals(Constants.TOKEN_ADDRESSES.get("USDC").toLowerCase())
-                || addr.equals(Constants.TOKEN_ADDRESSES.get("USDT").toLowerCase())) {
+    public BigDecimal getTokenUsdPrice(Address token, Instant ts) {
+        log.debug("getTokenUsdPrice() → token={} at {}", token, ts);
+        if (KNOWN_TOKENS.contains(token)) {
+            log.debug("  Token {} is a known USD quote. Returning 1.", token);
             return BigDecimal.ONE;
         }
-        if (addr.equals(Constants.TOKEN_ADDRESSES.get("DAI").toLowerCase())) {
-            try {
-                BigInteger block = findBlockByBinarySearch(timestamp);
-                String pool      = Constants.AERODROME_POOL_ADDRESSES.get("DAI-USDC");
-                BigInteger[] p   = getPoolPrices(pool, DefaultBlockParameter.valueOf(block));
-                return new BigDecimal(p[1])
-                        .multiply(BigDecimal.TEN.pow(18))
-                        .divide(new BigDecimal(p[0]).multiply(BigDecimal.TEN.pow(6)),
-                                18, RoundingMode.HALF_UP);
-            } catch (Exception e) {
-                log.error("DAI historical price failed: {}", e.getMessage());
-            }
+
+        LocalDate day = ts.atZone(ZoneOffset.UTC).toLocalDate();
+        TokenDayKey key = new TokenDayKey(token, day);
+        return priceCache.get(key, k -> {
+            log.debug("  Cache miss for {} on {} – computing price.", token, day);
+            return computePrice(token, ts);
+        });
+    }
+
+    private BigDecimal computePrice(Address token, Instant ts) {
+        log.debug("computePrice() → token={} at {}", token, ts);
+
+        // 1) direct USD quote pools
+        Optional<BigDecimal> direct = quoteViaStable(token, ts);
+        if (direct.isPresent()) {
+            log.debug("  Direct stable quote found: {}", direct.get());
+            return direct.get();
         }
+        log.debug("  No direct stable quote found.");
+
+        // 2) token/WETH pool × ETH/USD
+        Optional<BigDecimal> viaEth = quoteViaEth(token, ts);
+        if (viaEth.isPresent()) {
+            log.debug("  Quote via ETH found: {}", viaEth.get());
+            return viaEth.get();
+        }
+        log.debug("  No viable ETH quote found.");
+
+        // 3) off-chain API
+        Optional<BigDecimal> offChainPrice = offChainService.getPrice(poolResolver.symbolOf(token));
+        if(offChainPrice.isPresent()) {
+            log.debug("  Off-chain price service returned: {}", offChainPrice.get());
+            return offChainPrice.get();
+        }
+
+        log.warn("  All chain methods failed for {} at {}. Falling back to 1.", token, ts);
         return BigDecimal.ONE;
     }
 
-    private BigInteger[] getPoolPrices(String poolAddr, DefaultBlockParameter block) throws Exception {
-        Function fn = new Function(
-                "slot0",
-                Collections.emptyList(),
-                Arrays.asList(
-                        new TypeReference<Uint256>() {}, // sqrtPriceX96
-                        new TypeReference<Uint256>() {}, // tick
-                        new TypeReference<Uint256>() {}, // obsIndex
-                        new TypeReference<Uint256>() {}, // obsCard
-                        new TypeReference<Uint256>() {}, // obsCardNext
-                        new TypeReference<Uint256>() {}, // feeProtocol
-                        new TypeReference<Uint256>() {}  // unlocked
-                )
-        );
-        String data = FunctionEncoder.encode(fn);
-        EthCall call = web3j.ethCall(
-                Transaction.createEthCallTransaction(null, poolAddr, data),
-                block
-        ).send();
-        if (call.hasError()) {
-            throw new RuntimeException("slot0() failed: " + call.getError().getMessage());
+    private Optional<BigDecimal> quoteViaStable(Address token, Instant ts) {
+        log.debug("quoteViaStable() → token={} at {}", token, ts);
+        Optional<Quote> best = KNOWN_TOKENS.stream()
+                .map(q -> buildQuote(token, q, ts))
+                .flatMap(Optional::stream)
+                .filter(this::passesGate)
+                .max(Comparator.comparing(Quote::getReserveUsd));
+
+        if (best.isPresent()) {
+            BigDecimal price = best.get().getUsdPrice();
+            log.debug("  Best stable quote: {} (reserveUsd={})", price, best.get().getReserveUsd());
+            return Optional.of(price);
+        } else {
+            log.debug("  No stable quote pools passed quality gates.");
+            return Optional.empty();
         }
-        List<Type> decoded           = FunctionReturnDecoder.decode(call.getValue(), fn.getOutputParameters());
-        Uint256 sqrtX96Wrapped       = (Uint256) decoded.get(0);
-        BigInteger sqrtX96           = sqrtX96Wrapped.getValue();
-        BigDecimal sq    = new BigDecimal(sqrtX96).pow(2);
-        BigDecimal two192 = new BigDecimal(BigInteger.ONE.shiftLeft(192));
-        BigInteger price0 = sq.divide(two192, 0, RoundingMode.HALF_UP).toBigInteger();
-        BigInteger price1 = two192.divide(sq, 0, RoundingMode.HALF_UP).toBigInteger();
-        return new BigInteger[]{ price0, price1 };
+    }
+
+    private Optional<BigDecimal> quoteViaEth(Address token, Instant ts) {
+        log.debug("quoteViaEth() → token={} at {}", token, ts);
+        Optional<Quote> q = buildQuote(token, WETH, ts).filter(this::passesGate);
+        if (q.isEmpty()) {
+            log.debug("  No token/WETH pool passed quality gates.");
+            return Optional.empty();
+        }
+
+        BigDecimal ethUsd = getEthUsdPrice(ts);
+        log.debug("  On-chain ETH/USD price: {}", ethUsd);
+        if (ethUsd.signum() == 0) {
+            log.warn("  ETH/USD price is zero at {}. Cannot compute via ETH.", ts);
+            return Optional.empty();
+        }
+
+        BigDecimal usdPrice = q.get().getUsdPrice().multiply(ethUsd);
+        log.debug("  Computed {} USD per token via ETH route.", usdPrice);
+        return Optional.of(usdPrice);
+    }
+
+    /* -------- ETH / USD pricing (on-chain first) -------- */
+    private final Map<LocalDate, BigDecimal> ethUsdCache = new ConcurrentHashMap<>();
+
+    public BigDecimal getEthUsdPrice(Instant ts) {
+        log.debug("getEthUsdPrice() → at {}", ts);
+        LocalDate day = ts.atZone(ZoneOffset.UTC).toLocalDate();
+        return ethUsdCache.computeIfAbsent(day, d -> {
+            log.debug("  ETH/USD cache miss on {} – computing.", d);
+            return computeEthUsdPrice(ts);
+        });
+    }
+
+    private BigDecimal computeEthUsdPrice(Instant ts) {
+        log.debug("computeEthUsdPrice() → at {}", ts);
+        Optional<BigDecimal> onChain = KNOWN_TOKENS.stream()
+                .map(q -> buildQuote(WETH, q, ts))
+                .flatMap(Optional::stream)
+                .filter(this::passesGate)
+                .max(Comparator.comparing(Quote::getReserveUsd))
+                .map(Quote::getUsdPrice);
+
+        if (onChain.isPresent()) {
+            log.debug("  On-chain ETH/USD found: {}", onChain.get());
+            return onChain.get();
+        }
+
+        log.warn("  No on-chain ETH/USD pools passed gates. Fallback to zero.");
+        Optional<BigDecimal> offChain = Optional.of(offChainService.getPrice("ETH", ts).orElse(BigDecimal.ZERO));
+
+        return offChain.orElse(BigDecimal.ZERO);
+    }
+
+    /* -------- quote builder -------- */
+    private Optional<Quote> buildQuote(Address token, Address quote, Instant ts) {
+        log.debug("buildQuote() → token={} vs {} at {}", token, quote, ts);
+        Optional<Address> poolOpt = poolResolver.findBestPool(token, quote);
+        if (poolOpt.isEmpty()) {
+            log.debug("  No pool found for {} vs {}", token, quote);
+            return Optional.empty();
+        }
+        Address pool = poolOpt.get();
+        log.debug("  Selected pool {} for {} vs {}", pool, token, quote);
+
+        try {
+            BigInteger block = blockUtil.blockAt(ts);
+            log.debug("  Resolved block {} for timestamp {}", block, ts);
+
+            TwapData twap = poolResolver.observeTwap(pool, 900, block);
+            BigDecimal priceTokPerQuote = poolResolver.sqrtPriceX96ToPrice(twap.getSqrtPriceX96(), token, quote);
+            BigDecimal usdPrice = KNOWN_TOKENS.contains(quote)
+                    ? priceTokPerQuote
+                    : priceTokPerQuote.multiply(getEthUsdPrice(ts));
+
+            log.debug("  TWAP price: {} per quote; reserveUsd={} ; volumeUsd24h={}",
+                    usdPrice, twap.getReserveUsd(), twap.getVolumeUsd24h());
+
+            return Optional.of(new Quote(usdPrice, twap.getReserveUsd(), twap.getVolumeUsd24h()));
+        } catch (Exception e) {
+            log.debug("  Exception building quote for pool {}: {}", pool.getValue(), e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private boolean passesGate(Quote q) {
+        boolean pass = q.getReserveUsd().compareTo(minReserveUsd) >= 0
+                && q.getVolumeUsd24h().compareTo(minVolumeUsd) >= 0;
+        log.debug("passesGate() → reserveUsd={} (min {}) , volumeUsd24h={} (min {}) => {}",
+                q.getReserveUsd(), minReserveUsd, q.getVolumeUsd24h(), minVolumeUsd, pass);
+        return pass;
     }
 }

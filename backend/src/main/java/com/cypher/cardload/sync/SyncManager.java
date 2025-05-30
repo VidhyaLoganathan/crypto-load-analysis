@@ -55,6 +55,7 @@ public class SyncManager implements ApplicationRunner {
                     daysEnd.plusDays(1).atStartOfDay(ZONE_ID).toInstant()
             );
         }
+        log.info("Skipping syn for local test");
     }
 
     /**

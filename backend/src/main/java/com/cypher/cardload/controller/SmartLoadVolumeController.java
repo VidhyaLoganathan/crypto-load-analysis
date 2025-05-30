@@ -56,14 +56,12 @@ public class SmartLoadVolumeController {
             return ResponseEntity.ok(simulatedLoadVolumeService.getDailyLoadVolume(startDate, endDate));
         }
 
-        // Try to test blockchain connection
-        try {
-            blockchainService.getCurrentBlockNumber();
+        if(blockchainService.pingBaseScan()) {
             log.info("Using real blockchain data");
             return ResponseEntity.ok(loadVolumeService.getDailyLoadVolume(startDate, endDate));
-        } catch (Exception e) {
+        } else {
             // Fall back to simulator if blockchain connection fails
-            log.warn("Blockchain connection failed, falling back to simulator: {}", e.getMessage());
+            log.warn("Blockchain connection failed, falling back to simulator: ");
             return ResponseEntity.ok(simulatedLoadVolumeService.getDailyLoadVolume(startDate, endDate));
         }
     }
@@ -81,14 +79,11 @@ public class SmartLoadVolumeController {
             return ResponseEntity.ok(simulatedLoadVolumeService.getWeeklyLoadVolume(startDate, endDate));
         }
 
-        // Try to test blockchain connection
-        try {
-            blockchainService.getCurrentBlockNumber();
+        if(blockchainService.pingBaseScan()) {
             log.info("Using real blockchain data");
             return ResponseEntity.ok(loadVolumeService.getWeeklyLoadVolume(startDate, endDate));
-        } catch (Exception e) {
-            // Fall back to simulator if blockchain connection fails
-            log.warn("Blockchain connection failed, falling back to simulator: {}", e.getMessage());
+        } else {
+            log.warn("Blockchain connection failed, falling back to simulator");
             return ResponseEntity.ok(simulatedLoadVolumeService.getWeeklyLoadVolume(startDate, endDate));
         }
     }
@@ -106,14 +101,11 @@ public class SmartLoadVolumeController {
             return ResponseEntity.ok(simulatedLoadVolumeService.getMonthlyLoadVolume(startDate, endDate));
         }
 
-        // Try to test blockchain connection
-        try {
-            blockchainService.getCurrentBlockNumber();
+        if(blockchainService.pingBaseScan()) {
             log.info("Using real blockchain data");
             return ResponseEntity.ok(loadVolumeService.getMonthlyLoadVolume(startDate, endDate));
-        } catch (Exception e) {
-            // Fall back to simulator if blockchain connection fails
-            log.warn("Blockchain connection failed, falling back to simulator: {}", e.getMessage());
+        } else {
+            log.warn("Blockchain connection failed, falling back to simulator:");
             return ResponseEntity.ok(simulatedLoadVolumeService.getMonthlyLoadVolume(startDate, endDate));
         }
     }
@@ -131,14 +123,12 @@ public class SmartLoadVolumeController {
             return ResponseEntity.ok(simulatedLoadVolumeService.getSummary(startDate, endDate));
         }
 
-        // Try to test blockchain connection
-        try {
-            blockchainService.getCurrentBlockNumber();
+        if(blockchainService.pingBaseScan()) {
             log.info("Using real blockchain data");
             return ResponseEntity.ok(loadVolumeService.getSummary(startDate, endDate));
-        } catch (Exception e) {
+        } else {
             // Fall back to simulator if blockchain connection fails
-            log.warn("Blockchain connection failed, falling back to simulator: {}", e.getMessage());
+            log.warn("Blockchain connection failed, falling back to simulator:");
             return ResponseEntity.ok(simulatedLoadVolumeService.getSummary(startDate, endDate));
         }
     }
