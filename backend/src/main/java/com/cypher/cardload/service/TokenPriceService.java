@@ -39,13 +39,29 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class TokenPriceService {
 
+    // Example usage
+    public static final List<Address> KNOWN_TOKENS = getKnownTokenAddresses();
+    /**
+     * Canonical WETH address on Base.
+     */
+    private static final Address WETH = new Address("0x4200000000000000000000000000000000000006");
     private final Web3j web3j;
     private final ClPoolResolver poolResolver;
     private final BlockUtil blockUtil;
-     private final OffChainService offChainService;
-
-    /** Canonical WETH address on Base. */
-    private static final Address WETH = new Address("0x4200000000000000000000000000000000000006");
+    private final OffChainService offChainService;
+    /**
+     * Cache (token, UTC-day) ➜ price to avoid duplicate chain/API hits.
+     */
+    private final Cache<TokenDayKey, BigDecimal> priceCache = Caffeine.newBuilder()
+            .expireAfterWrite(24, TimeUnit.HOURS)
+            .maximumSize(100_000)
+            .build();
+    /* -------- ETH / USD pricing (on-chain first) -------- */
+    private final Map<LocalDate, BigDecimal> ethUsdCache = new ConcurrentHashMap<>();
+    @Value("${pricing.minReserveUsd:50000}")
+    private BigDecimal minReserveUsd;
+    @Value("${pricing.minVolumeUsd:5000}")
+    private BigDecimal minVolumeUsd;
 
     public static List<Address> getKnownTokenAddresses() {
         Map<String, String> map = BlockchainConstants.createTokenAddressesMap();
@@ -53,20 +69,6 @@ public class TokenPriceService {
                 .map(Address::new)
                 .collect(Collectors.toList());
     }
-
-    // Example usage
-    public static final List<Address> KNOWN_TOKENS = getKnownTokenAddresses();
-
-    @Value("${pricing.minReserveUsd:50000}")
-    private BigDecimal minReserveUsd;
-    @Value("${pricing.minVolumeUsd:5000}")
-    private BigDecimal minVolumeUsd;
-
-    /** Cache (token, UTC-day) ➜ price to avoid duplicate chain/API hits. */
-    private final Cache<TokenDayKey, BigDecimal> priceCache = Caffeine.newBuilder()
-            .expireAfterWrite(24, TimeUnit.HOURS)
-            .maximumSize(100_000)
-            .build();
 
     public BigDecimal getTokenUsdPrice(Address token, Instant ts) {
         log.debug("getTokenUsdPrice() → token={} at {}", token, ts);
@@ -104,7 +106,7 @@ public class TokenPriceService {
 
         // 3) off-chain API
         Optional<BigDecimal> offChainPrice = offChainService.getPrice(poolResolver.symbolOf(token));
-        if(offChainPrice.isPresent()) {
+        if (offChainPrice.isPresent()) {
             log.debug("  Off-chain price service returned: {}", offChainPrice.get());
             return offChainPrice.get();
         }
@@ -150,9 +152,6 @@ public class TokenPriceService {
         log.debug("  Computed {} USD per token via ETH route.", usdPrice);
         return Optional.of(usdPrice);
     }
-
-    /* -------- ETH / USD pricing (on-chain first) -------- */
-    private final Map<LocalDate, BigDecimal> ethUsdCache = new ConcurrentHashMap<>();
 
     public BigDecimal getEthUsdPrice(Instant ts) {
         log.debug("getEthUsdPrice() → at {}", ts);

@@ -87,11 +87,12 @@ public class BlockchainService {
         log.debug("Block API URL: {}", url);
 
         Request req = new Request.Builder().url(url).get().build();
-        try {
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        //TODO : Uncomment it so that we don't get API rate limit from basescan. But it makes things slow.
+//        try {
+//            Thread.sleep(5000);
+//        } catch (InterruptedException e) {
+//            throw new RuntimeException(e);
+//        }
         try (Response resp = httpClient.newCall(req).execute()) {
             String body = resp.body().string();
             JsonNode root = mapper.readTree(body);
