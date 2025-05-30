@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * TokenPriceService – on-chain first, off-chain only as last resort.
@@ -46,18 +47,15 @@ public class TokenPriceService {
     /** Canonical WETH address on Base. */
     private static final Address WETH = new Address("0x4200000000000000000000000000000000000006");
 
-    /** Quote tokens we treat as $1. Ranked by typical liquidity on Base. */
-    private static final List<Address> KNOWN_TOKENS = List.of(
-            new Address("0xd9fcd98c322942075a5c3860693e9f4f03aae07b"), // USDbC
-            new Address("0xaf88d065e77c8cC2239327C5EDb3A432268e5831"), // USDC.e
-            new Address("0xda10009cbd5d07dd0cecc66161fc93d7c9000da1"), // DAI
-            new Address("0x5f98805a4e8be255a32880fdec7f6728c6568ba0"), // LUSD
-            new Address("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"), // USDC on Base
-            new Address("0xfde4c96c8593536e31f229ea8f37b2ada2699bb2"), // USDT on Base
-            new Address("0xb79dd08ea68a908a97220c76d19a6aa9cbde4376"), // USD+
-            new Address("0x909DBdE1eBE906Af95660033e478D59EFe831fED")  // FRAX
-    );
+    public static List<Address> getKnownTokenAddresses() {
+        Map<String, String> map = BlockchainConstants.createTokenAddressesMap();
+        return map.keySet().stream()
+                .map(Address::new)
+                .collect(Collectors.toList());
+    }
 
+    // Example usage
+    public static final List<Address> KNOWN_TOKENS = getKnownTokenAddresses();
 
     @Value("${pricing.minReserveUsd:50000}")
     private BigDecimal minReserveUsd;
@@ -73,7 +71,7 @@ public class TokenPriceService {
     public BigDecimal getTokenUsdPrice(Address token, Instant ts) {
         log.debug("getTokenUsdPrice() → token={} at {}", token, ts);
         if (KNOWN_TOKENS.contains(token)) {
-            log.debug("  Token {} is a known USD quote. Returning 1.", token);
+            log.debug(" Token {} is a known USD quote. Returning 1.", token);
             return BigDecimal.ONE;
         }
 

@@ -38,19 +38,19 @@ public class BlockchainService {
 
     //getting non-english symbols as part of tokenSymbol in response
     private static final Pattern NON_ASCII = Pattern.compile("[^\\p{ASCII}]");
-    private static String asciiOnly(String s) {
-        // NFKC: Compatibility decomposition, then strip anything outside ASCII
-        String normalized = Normalizer.normalize(s, Normalizer.Form.NFKC);
-        return NON_ASCII.matcher(normalized).replaceAll("");
-    }
     private final OkHttpClient httpClient;
     private final ObjectMapper mapper;
     private final TokenPriceService priceService;
-
     public BlockchainService(TokenPriceService priceService) {
         this.httpClient = new OkHttpClient();
         this.mapper = new ObjectMapper();
         this.priceService = priceService;
+    }
+
+    private static String asciiOnly(String s) {
+        // NFKC: Compatibility decomposition, then strip anything outside ASCII
+        String normalized = Normalizer.normalize(s, Normalizer.Form.NFKC);
+        return NON_ASCII.matcher(normalized).replaceAll("");
     }
 
     /**
@@ -96,7 +96,7 @@ public class BlockchainService {
             String body = resp.body().string();
             JsonNode root = mapper.readTree(body);
             if (!"1".equals(root.path("status").asText())) {
-                log.warn("Block lookup returned status={} body={}", root.path("status").asText(), root);
+              //  log.warn("Block lookup returned status={} body={}", root.path("status").asText(), root);
                 throw new IllegalStateException("Block lookup failed: " + root);
             }
             String blk = root.path("result").asText();
@@ -127,7 +127,7 @@ public class BlockchainService {
             Request req = new Request.Builder().url(url).get().build();
             try (Response resp = httpClient.newCall(req).execute()) {
                 String respBody = resp.body().string();
-                log.info("ERC20 raw response (page {}): {}", page, respBody);
+                //log.info("ERC20 raw response (page {}): {}", page, respBody);
 
                 JsonNode arr = mapper.readTree(respBody).path("result");
                 if (!arr.isArray() || arr.size() == 0) {
@@ -219,7 +219,7 @@ public class BlockchainService {
             Request req = new Request.Builder().url(url).get().build();
             try (Response resp = httpClient.newCall(req).execute()) {
                 String respBody = resp.body().string();
-                log.info("ETH raw response (page {}): {}", page, respBody);
+              //  log.info("ETH raw response (page {}): {}", page, respBody);
 
                 JsonNode arr = mapper.readTree(respBody).path("result");
                 if (!arr.isArray() || arr.size() == 0) {
@@ -231,7 +231,7 @@ public class BlockchainService {
                     //Accept only a successful transaction
                     if (tx.path("isError").asInt() != 1) {
                         String txHash = tx.path("hash").asText();
-                        MDC.put("txHash",txHash);
+                        MDC.put("txHash", txHash);
                         String blockNumber = tx.path("blockNumber").asText();
                         BigInteger wei = new BigInteger(tx.path("value").asText());
                         BigDecimal eth = new BigDecimal(wei)

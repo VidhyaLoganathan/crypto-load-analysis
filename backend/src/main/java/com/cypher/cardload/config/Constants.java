@@ -1,6 +1,6 @@
 package com.cypher.cardload.config;
 
-import java.util.Map;
+import java.util.*;
 
 public class Constants {
     //cypher wallet address

@@ -51,15 +51,6 @@ public class ContractDetectionService {
         // Add all known addresses from BlockchainConstants
         addressMap.putAll(BlockchainConstants.getAllKnownAddresses());
 
-        // Add additional known addresses
-        addressMap.putAll(AdditionalKnownAddresses.getAddresses());
-
-        // Special case for the specific address in the query
-        addressMap.put("0xf73815d846b93e752f648dc0b7f3eb6e5656a32a", "Cypher Protocol");
-
-        // Add specific cases for the addresses shown in the response
-        addressMap.put("0x19ceead7105607cd444f5ad10dd51356436095a1", "Cypher Finance");
-
         // USDC token address - ensure it's in the map
         addressMap.put("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", "USDC");
 
