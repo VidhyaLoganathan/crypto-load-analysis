@@ -271,6 +271,12 @@ If the primary on-chain source fails or lacks data, the oracle gracefully falls 
 12. **Seed Database** for faster data retrieval
 
 ---
+## References 
+- https://jeiwan.net/posts/programming-defi-uniswap-1/
+- https://uniswapv3book.com/index.html
+- https://bennyattar.substack.com/p/the-evolution-of-amms
+- https://docs.basescan.org/api-endpoints/accounts
+---
 ## Author
 Vidhya Loganathan <vidhya7apr@gmail.com >
 
