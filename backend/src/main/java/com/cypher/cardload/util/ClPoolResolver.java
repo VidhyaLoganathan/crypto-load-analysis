@@ -40,8 +40,12 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Resolves concentrated-liquidity pools (Uniswap-v3 family) and computes true TWAPs
- * by calling observe(...) and using TickMath.
+ * Component responsible for resolving Uniswap V3 (and similar) concentrated-liquidity pools
+ * and computing on-chain price data such as TWAP (Time-Weighted Average Price), reserves,
+ * and swap volumes in USD.
+ * <p>
+ * Utilizes static pool mappings, dynamic CREATE2 resolution, reserve snapshots, swap logs,
+ * and fee-tier selection to determine the most reliable pricing pool for any token pair.
  */
 @Slf4j
 @Component
@@ -51,15 +55,15 @@ public class ClPoolResolver {
 
     private static final List<Address> FACTORIES = List.of(
             new Address("0x33128a8fC17869897dcE68Ed026d694621f6FDfD"), // Uniswap V3 (Base)
-            new Address("0x4200000000000000000000000000000000000002"), //Aerodrome
-            new Address("0x38015D05f4fEC8AFe15D7cc0386a126574e8077B"), //BaseSwap
-            new Address("0x25C8a3541e4d986fc31d302220063C5f61Da42E1") //Velodrome
+            new Address("0x4200000000000000000000000000000000000002"), // Aerodrome
+            new Address("0x38015D05f4fEC8AFe15D7cc0386a126574e8077B"), // BaseSwap
+            new Address("0x25C8a3541e4d986fc31d302220063C5f61Da42E1")  // Velodrome
     );
 
     private static final List<BigInteger> FEE_TIERS = List.of(
-            BigInteger.valueOf(500), //0.05%
-            BigInteger.valueOf(3000), //0.3%
-            BigInteger.valueOf(10000) //1%
+            BigInteger.valueOf(500),   // 0.05%
+            BigInteger.valueOf(3000),  // 0.3%
+            BigInteger.valueOf(10000)  // 1%
     );
 
     private static final String V3_POOL_BYTECODE_HASH =
@@ -68,7 +72,10 @@ public class ClPoolResolver {
     private static final int AVERAGE_BLOCK_TIME_SECONDS = 2;
 
     /**
-     * Finds the best pool address for tokenA/tokenB: static map first, then dynamic lookup
+     * locate the optimal Uniswap V3 pool address for the given token pair.
+     * <p>
+     * First checks a static mapping in {@link CommonPools}, then attempts dynamic resolution
+     * using CREATE2 across known DEX factory addresses and fee tiers.
      */
     public Optional<Address> findBestPool(Address tokenA, Address tokenB) {
         // 1) static CommonPools lookup by symbol key
@@ -91,28 +98,36 @@ public class ClPoolResolver {
         return Optional.empty();
     }
 
-    /** Helper to map common token addresses to symbols (for static lookup). */
+    /**
+     * Maps a token address to a human-readable symbol using the static pool map.
+     * If no mapping is found, returns the first 6 hex characters of the address.
+     *
+     */
     public String symbolOf(Address token) {
-        // Try reverse lookup in each DEX's pool map
         for (Map.Entry<String, Map<String, String>> dexEntry : CommonPools.POOL_ADDRESSES.entrySet()) {
             for (String key : dexEntry.getValue().keySet()) {
                 String address = dexEntry.getValue().get(key);
                 if (address.equalsIgnoreCase(token.getValue())) {
-                    // key is like "USDC-WETH"
                     return key.split("-")[0];
                 }
             }
         }
-        // fallback: use hex prefix
         return token.getValue().substring(0, 6);
     }
 
     /**
-     * Computes Uniswap V3 TWAP by calling observe and converting ticks via TickMath.
+     * Computes the Time-Weighted Average Price (TWAP) for a given pool by calling its
+     * <code>observe</code> method and converting ticks via {@link TickMath}.
+     * Also calculates reserve and USD swap volume for the interval.
+     *
+     * @param pool      pool address to query
+     * @param secondsAgo look-back window in seconds
+     * @param atBlock    block number at which to query
+     * @return TwapData containing TWAP, reserve, and swap volume in USD
+     * @throws Exception if any on-chain call fails or reverts
      */
     public TwapData observeTwap(Address pool, int secondsAgo, BigInteger atBlock) throws Exception {
         DefaultBlockParameterNumber blkNow = new DefaultBlockParameterNumber(atBlock);
-        // approximate blocks elapsed
         BigInteger blocksAgo = BigInteger.valueOf(secondsAgo)
                 .divide(BigInteger.valueOf(AVERAGE_BLOCK_TIME_SECONDS));
         BigInteger blkPast = atBlock.subtract(blocksAgo);
@@ -146,21 +161,36 @@ public class ClPoolResolver {
         int avgTick = tickDelta.divide(BigInteger.valueOf(secondsAgo)).intValue();
         BigInteger sqrtPriceX96Twap = TickMath.getSqrtRatioAtTick(avgTick);
 
-        // 3) reserve & volume
+        // 3) compute reserve and swap volume
         BigDecimal reserve = computeReserve(pool, sqrtPriceX96Twap, blkNow);
         BigDecimal volumeUsd = computeSwapVolumeUsd(pool, blkPast, blkNow, sqrtPriceX96Twap);
 
         return new TwapData(sqrtPriceX96Twap, reserve, volumeUsd);
     }
 
-    /** Converts sqrtPriceX96 to price. */
+    /**
+     * Converts Uniswap V3 sqrtPriceX96 value to a human-readable price ratio token1/token0.
+     *
+     * @param sqrtPriceX96 sqrtPriceX96 value from pool
+     * @param token0       first token in pair (unused except for context)
+     * @param token1       second token in pair (unused except for context)
+     * @return price as BigDecimal with 18 decimal places
+     */
     public BigDecimal sqrtPriceX96ToPrice(BigInteger sqrtPriceX96, Address token0, Address token1) {
         BigDecimal num = new BigDecimal(sqrtPriceX96).pow(2);
         BigDecimal denom = BigDecimal.valueOf(2).pow(192);
         return num.divide(denom, 18, RoundingMode.HALF_UP);
     }
 
-    /** Derives reserve0 = L^2 / price using TWAP sqrtPriceX96. */
+    /**
+     * Reads the on-chain liquidity of a pool and derives token0 reserve given a sqrtPriceX96.
+     *
+     * @param pool          pool address
+     * @param sqrtPriceX96  TWAP sqrtPriceX96
+     * @param blk           block parameter to query
+     * @return token0 reserve as BigDecimal
+     * @throws Exception if on-chain call fails
+     */
     private BigDecimal computeReserve(Address pool, BigInteger sqrtPriceX96, DefaultBlockParameterNumber blk)
             throws Exception {
         Function liq = new Function("liquidity", List.of(), List.of(new TypeReference<Uint128>() {}));
@@ -175,7 +205,17 @@ public class ClPoolResolver {
         return L.pow(2).divide(price, 18, RoundingMode.HALF_UP);
     }
 
-    /** Sums Swap event volumes, converted to USD at TWAP price. */
+    /**
+     * Retrieves and sums swap event volumes for a pool, converting trade amounts into USD
+     * using the provided TWAP-based price.
+     *
+     * @param pool               pool address
+     * @param blkFrom            starting block number
+     * @param blkTo              ending block parameter
+     * @param sqrtPriceX96Twap   TWAP sqrtPriceX96 to use for USD conversion
+     * @return total swap volume in USD over the interval
+     * @throws Exception if log query or decoding fails
+     */
     private BigDecimal computeSwapVolumeUsd(
             Address pool,
             BigInteger blkFrom,
@@ -208,6 +248,15 @@ public class ClPoolResolver {
         return total;
     }
 
+    /**
+     * Computes the CREATE2-based pool address for a given factory, token pair, and fee.
+     *
+     * @param factory factory contract address
+     * @param token0  first token address (lexicographically lower)
+     * @param token1  second token address (lexicographically higher)
+     * @param fee     pool fee tier in hundredths of a bip (e.g., 500 = 0.05%)
+     * @return resolved pool address
+     */
     private Address computePoolAddress(Address factory, Address token0, Address token1, BigInteger fee) {
         byte[] packed = Bytes.concat(
                 Numeric.toBytesPadded(new BigInteger(token0.getValue().substring(2), 16), 20),
@@ -221,6 +270,12 @@ public class ClPoolResolver {
         return new Address(addr);
     }
 
+    /**
+     * Checks whether bytecode exists at the given address on-chain.
+     *
+     * @param addr address to check
+     * @return true if contract code is present, false otherwise
+     */
     private boolean codeExists(Address addr) {
         try {
             EthGetCode cg = web3j.ethGetCode(addr.getValue(), DefaultBlockParameterName.LATEST).send();
@@ -231,18 +286,13 @@ public class ClPoolResolver {
         }
     }
 
-//    private BigInteger readSqrtPriceX96(Address pool, BigInteger atBlock) throws Exception {
-//        Function slot0 = new Function(
-//                "slot0", List.of(), List.of(new TypeReference<Uint160>() {})
-//        );
-//        EthCall rc = web3j.ethCall(
-//                Transaction.createEthCallTransaction(null, pool.getValue(), FunctionEncoder.encode(slot0)),
-//                new DefaultBlockParameterNumber(atBlock)
-//        ).send();
-//        if (rc.hasError()) throw new IllegalStateException(rc.getError().getMessage());
-//        return (BigInteger) FunctionReturnDecoder.decode(rc.getValue(), slot0.getOutputParameters()).get(0).getValue();
-//    }
-
+    /**
+     * Orders two addresses lexicographically (by BigInteger value) for CREATE2 computation.
+     *
+     * @param a first address
+     * @param b second address
+     * @return array [lower, higher]
+     */
     private Address[] lexicographic(Address a, Address b) {
         BigInteger ai = Numeric.toBigInt(a.getValue());
         BigInteger bi = Numeric.toBigInt(b.getValue());

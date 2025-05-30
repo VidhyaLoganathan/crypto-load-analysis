@@ -1,6 +1,12 @@
 package com.cypher.cardload.service;
 
-import com.cypher.cardload.util.*;
+import com.cypher.cardload.util.BlockUtil;
+import com.cypher.cardload.util.TwapData;
+import com.cypher.cardload.util.Quote;
+import com.cypher.cardload.util.TokenDayKey;
+import com.cypher.cardload.util.BlockchainConstants;
+import com.cypher.cardload.service.OffChainService;
+import com.cypher.cardload.util.ClPoolResolver;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.RequiredArgsConstructor;
@@ -24,45 +30,66 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
- * TokenPriceService – on-chain first, off-chain only as last resort.
- * NOTE : All price values are estimated price at the day of transaction
- * Sample Example :
+ * Service for retrieving USD price of tokens at given timestamps.
  * <p>
- * [2025-05-28] com.cypher.cardload.service.BlockchainService -
- * ERC20 tx=0x66ddc01fff67fd739a6944275fbfcb6776bbab621009673862cfe1a1daf833b7
- * block=30802049
- * totalUsd=$14.0138
- * </p>
+ * Implements a multi-tiered pricing strategy:
+ * <ol>
+ *   <li>On-chain direct stable pools</li>
+ *   <li>On-chain token/WETH pools combined with ETH/USD</li>
+ *   <li>Off-chain API fallback</li>
+ * </ol>
+ * Caches per-token-per-day prices and ETH/USD prices for efficiency.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class TokenPriceService {
 
-    // Example usage
-    public static final List<Address> KNOWN_TOKENS = getKnownTokenAddresses();
     /**
-     * Canonical WETH address on Base.
+     * List of known stable tokens whose USD price is always 1.
+     */
+    public static final List<Address> KNOWN_TOKENS = getKnownTokenAddresses();
+
+    /**
+     * Canonical WETH token address on Base network.
      */
     private static final Address WETH = new Address("0x4200000000000000000000000000000000000006");
+
     private final Web3j web3j;
     private final ClPoolResolver poolResolver;
     private final BlockUtil blockUtil;
     private final OffChainService offChainService;
+
     /**
-     * Cache (token, UTC-day) ➜ price to avoid duplicate chain/API hits.
+     * Cache mapping (token, UTC day) to computed USD price to avoid repeated lookups.
      */
     private final Cache<TokenDayKey, BigDecimal> priceCache = Caffeine.newBuilder()
             .expireAfterWrite(24, TimeUnit.HOURS)
             .maximumSize(100_000)
             .build();
-    /* -------- ETH / USD pricing (on-chain first) -------- */
+
+    /**
+     * Cache of ETH to USD prices by UTC day.
+     */
     private final Map<LocalDate, BigDecimal> ethUsdCache = new ConcurrentHashMap<>();
+
+    /**
+     * Minimum required on-chain USD reserve to consider a pool quote valid.
+     */
     @Value("${pricing.minReserveUsd:50000}")
     private BigDecimal minReserveUsd;
+
+    /**
+     * Minimum required 24h USD volume to consider a pool quote valid.
+     */
     @Value("${pricing.minVolumeUsd:5000}")
     private BigDecimal minVolumeUsd;
 
+    /**
+     * Builds the list of known token addresses from configuration.
+     *
+     * @return list of token addresses considered as USD-pegged
+     */
     public static List<Address> getKnownTokenAddresses() {
         Map<String, String> map = BlockchainConstants.createTokenAddressesMap();
         return map.keySet().stream()
@@ -70,6 +97,16 @@ public class TokenPriceService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Retrieves the USD price for a given token at a specific timestamp.
+     * <p>
+     * First checks stable tokens, then on-chain pools, and finally off-chain APIs.
+     * Caches result per UTC day.
+     *
+     * @param token token address to price
+     * @param ts    timestamp of price lookup
+     * @return USD price as BigDecimal
+     */
     public BigDecimal getTokenUsdPrice(Address token, Instant ts) {
         log.debug("getTokenUsdPrice() → token={} at {}", token, ts);
         if (KNOWN_TOKENS.contains(token)) {
@@ -85,10 +122,17 @@ public class TokenPriceService {
         });
     }
 
+    /**
+     * Computes the price by trying direct stable pools, then via WETH, then off-chain.
+     *
+     * @param token token address
+     * @param ts    timestamp for lookup
+     * @return computed USD price
+     */
     private BigDecimal computePrice(Address token, Instant ts) {
         log.debug("computePrice() → token={} at {}", token, ts);
 
-        // 1) direct USD quote pools
+        // 1) direct USD stable pools
         Optional<BigDecimal> direct = quoteViaStable(token, ts);
         if (direct.isPresent()) {
             log.debug("  Direct stable quote found: {}", direct.get());
@@ -96,7 +140,7 @@ public class TokenPriceService {
         }
         log.debug("  No direct stable quote found.");
 
-        // 2) token/WETH pool × ETH/USD
+        // 2) via ETH pools
         Optional<BigDecimal> viaEth = quoteViaEth(token, ts);
         if (viaEth.isPresent()) {
             log.debug("  Quote via ETH found: {}", viaEth.get());
@@ -104,7 +148,7 @@ public class TokenPriceService {
         }
         log.debug("  No viable ETH quote found.");
 
-        // 3) off-chain API
+        // 3) off-chain API fallback
         Optional<BigDecimal> offChainPrice = offChainService.getPrice(poolResolver.symbolOf(token));
         if (offChainPrice.isPresent()) {
             log.debug("  Off-chain price service returned: {}", offChainPrice.get());
@@ -115,6 +159,13 @@ public class TokenPriceService {
         return BigDecimal.ONE;
     }
 
+    /**
+     * Attempts to quote against known USD-pegged tokens via on-chain pools.
+     *
+     * @param token token address
+     * @param ts    timestamp for lookup
+     * @return Optional USD price if a valid pool is found
+     */
     private Optional<BigDecimal> quoteViaStable(Address token, Instant ts) {
         log.debug("quoteViaStable() → token={} at {}", token, ts);
         Optional<Quote> best = KNOWN_TOKENS.stream()
@@ -133,6 +184,13 @@ public class TokenPriceService {
         }
     }
 
+    /**
+     * Attempts to quote via a token/WETH pool and multiplies by ETH/USD.
+     *
+     * @param token token address
+     * @param ts    timestamp for lookup
+     * @return Optional USD price if valid
+     */
     private Optional<BigDecimal> quoteViaEth(Address token, Instant ts) {
         log.debug("quoteViaEth() → token={} at {}", token, ts);
         Optional<Quote> q = buildQuote(token, WETH, ts).filter(this::passesGate);
@@ -153,6 +211,12 @@ public class TokenPriceService {
         return Optional.of(usdPrice);
     }
 
+    /**
+     * Retrieves ETH/USD price at a given timestamp, caching per day.
+     *
+     * @param ts timestamp for lookup
+     * @return USD price of ETH
+     */
     public BigDecimal getEthUsdPrice(Instant ts) {
         log.debug("getEthUsdPrice() → at {}", ts);
         LocalDate day = ts.atZone(ZoneOffset.UTC).toLocalDate();
@@ -162,6 +226,12 @@ public class TokenPriceService {
         });
     }
 
+    /**
+     * Computes ETH/USD price by selecting the best on-chain pool or falling back.
+     *
+     * @param ts timestamp for lookup
+     * @return computed USD price of ETH
+     */
     private BigDecimal computeEthUsdPrice(Instant ts) {
         log.debug("computeEthUsdPrice() → at {}", ts);
         Optional<BigDecimal> onChain = KNOWN_TOKENS.stream()
@@ -177,12 +247,18 @@ public class TokenPriceService {
         }
 
         log.warn("  No on-chain ETH/USD pools passed gates. Fallback to zero.");
-        Optional<BigDecimal> offChain = Optional.of(offChainService.getPrice("ETH", ts).orElse(BigDecimal.ZERO));
-
-        return offChain.orElse(BigDecimal.ZERO);
+        return offChainService.getPrice("ETH", ts).orElse(BigDecimal.ZERO);
     }
 
-    /* -------- quote builder -------- */
+    /**
+     * Builds a price quote for a token/quote pair at a given timestamp by finding the best pool,
+     * invoking observeTwap, and calculating USD price and metrics.
+     *
+     * @param token token address
+     * @param quote quote token address (e.g. stable or WETH)
+     * @param ts    timestamp for lookup
+     * @return Optional Quote including price, reserveUsd, and volumeUsd24h
+     */
     private Optional<Quote> buildQuote(Address token, Address quote, Instant ts) {
         log.debug("buildQuote() → token={} vs {} at {}", token, quote, ts);
         Optional<Address> poolOpt = poolResolver.findBestPool(token, quote);
@@ -213,6 +289,12 @@ public class TokenPriceService {
         }
     }
 
+    /**
+     * Applies quality gates to ensure a quote has sufficient liquidity and activity.
+     *
+     * @param q Quote object containing reserve and volume metrics
+     * @return true if quote meets minimum USD reserve and volume thresholds
+     */
     private boolean passesGate(Quote q) {
         boolean pass = q.getReserveUsd().compareTo(minReserveUsd) >= 0
                 && q.getVolumeUsd24h().compareTo(minVolumeUsd) >= 0;
