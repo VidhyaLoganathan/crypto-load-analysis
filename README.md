@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Spring Boot application powers the **Cypher Card Load Analytics** . It provides:
+This Spring Boot application powers the **Crypto Card Load Analytics** . It provides:
 
 - **Load Volume Endpoints**
     - Daily, weekly, and monthly token load volumes (in USD) for the master wallet.
@@ -157,11 +157,58 @@ backend/
 ### Computing USD Load Volume
 
 1. **Date Range:** Client supplies `startDate`/`endDate`.
-2. **Load or Fetch Transfers:** Check the DB; backfill missing days via `BlockchainService`.
-3. **Price Lookups:** Query `TokenPriceService` for each token’s USD price at its transfer timestamp.
+2. **Load or Fetch Transfers:** Check the DB; backfill missing days via `BlockchainService`. Fetch the blocknumbers for starttimestamp and endtimestamp.
+3. **Price Lookups:** For each blocknumbers, query `TokenPriceService` for each token’s USD price at its transfer timestamp.
+4. **Price detection Strategy:** First lookup on-chain (ERC-20 and ETH) if no matching found then fallback to off-chain (cryptocompare and coingecko)
 4. **Value Conversion:** Multiply token amounts by their historical USD prices.
 5. **Aggregation:** Sum daily values, then roll up into weekly or monthly totals.
 6. **Exposure:** Return the aggregated data via the `/api/load-volume` endpoints.
+
+#### Price Oracle Logic
+
+Implemented multi-layered oracle system to accurately derive token prices, leveraging both on-chain and off-chain data sources.
+
+**Oracle Architecture Overview**  
+The price oracle follows a hierarchical approach, prioritizing data sources in the following order:
+
+1. **On-chain Price Oracle (Primary Source)**
+2. **Off-chain API Oracle (Fallback Source)**
+
+If the primary on-chain source fails or lacks data, the oracle gracefully falls back to trusted off-chain services.
+
+---
+
+**Detailed Workflow**
+
+1. **On-chain Oracle (Primary)**  
+   *Source:* Uniswap V3-based smart contracts (e.g., Aerodrome Finance)  
+   **Steps:**
+    1. The oracle queries Uniswap V3 pools directly through Web3 contracts.
+    2. Fetches historical pool observations via the `observe()` method to determine token price at specific timestamps.
+    3. Uses **ClPoolResolver** to:
+        - Automatically pick the best Uniswap V3 pools across fee tiers (0.05%, 0.3%, 1%).
+        - Verify sufficient liquidity via reserve snapshots.
+        - Compute a Time-Weighted Average Price (TWAP) over the desired interval.
+        - Enrich the TWAP with “clean” swap-log prices (filtering out high-slippage trades).
+    4. If on-chain data is missing or unreliable, fall back to off-chain APIs.
+
+2. **Off-chain Oracle (Fallback)**  
+   *Sources:* CoinGecko, CryptoCompare  
+   **Steps:**
+    1. Make REST API calls to the external price providers.
+    2. Retrieve historical token price data when on-chain pools are unavailable or insufficient.
+    3. Provide a secondary layer of pricing validation and fallback support.
+
+3. **Selection Logic**
+    1. First, attempt on-chain pricing via Uniswap V3 pools.
+    2. If on-chain retrieval fails (e.g., low liquidity, missing pairs, reverted transactions), transparently switch to off-chain APIs.
+
+### Challenges Faced while implementing Price Oracle
+- Basescan API is rate limited to 5 calls/s in free tier. So did seed data population in docker from start of the year 2025.
+- Ignored transactions with error (tx.path("isError")) 
+- Ignored Unknown Tokens which have zero USD value.
+- TickMath is not directly available , so porting the TickMath library from Solidity to Java TickMath class.
+- All price values are estimated price at the day of transaction.
 
 ### Wallet Top Counterparty Analysis
 
