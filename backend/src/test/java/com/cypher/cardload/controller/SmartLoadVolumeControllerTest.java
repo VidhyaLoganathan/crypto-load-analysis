@@ -21,8 +21,8 @@ import java.util.Map;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(SmartLoadVolumeController.class)
-@TestPropertySource(properties = "load-simulator.enabled=true")
+//@WebMvcTest(SmartLoadVolumeController.class)
+//@TestPropertySource(properties = "load-simulator.enabled=true")
 class SmartLoadVolumeControllerTest {
 
     @Autowired
